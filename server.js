@@ -16,6 +16,9 @@
  */
 const WebSocket = require('ws');
 const PORT = process.env.PORT || 8080;
+/* 한 타석이 끝나고 다음 타자로 넘어가기까지의 간격(밀리초).
+   결과를 읽을 시간을 주려고 기본 0.9초를 둔다. 테스트할 때는 짧게 줄인다. */
+const AB_DELAY = Number(process.env.AB_DELAY || 900);
 const wss = new WebSocket.Server({ port: PORT });
 
 console.log(`[야구매니저 PvP] WebSocket 서버 시작됨 - 포트 ${PORT}`);
@@ -128,6 +131,59 @@ function resolveAtBat(res, batter, bases, label, outsBeforePlay){
   return { runs, hit, bases:b, log, isOut: (res==='K'||res==='OUT') };
 }
 
+/* ================= 랭킹 =================
+   경기가 끝날 때마다 플레이어(닉네임 기준)의 승·패를 쌓는다.
+   서버를 껐다 켜도 남도록 ranking.json 파일에 저장한다. */
+const fs = require('fs');
+const path = require('path');
+const RANK_FILE = process.env.RANK_FILE || path.join(__dirname, 'ranking.json');
+let ranks = {};   // name -> {name, teamName, w, l, rf, ra, streak, best, lastSeen}
+
+function loadRanks(){
+  try{
+    if(fs.existsSync(RANK_FILE)){
+      const data = JSON.parse(fs.readFileSync(RANK_FILE, 'utf8'));
+      if(data && typeof data === 'object') ranks = data;
+      console.log(`[랭킹] ${Object.keys(ranks).length}명 기록을 불러왔습니다.`);
+    }
+  }catch(e){ console.warn('[랭킹] 불러오기 실패:', e.message); }
+}
+let saveTimer = null;
+function saveRanksSoon(){
+  if(saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{
+    try{ fs.writeFileSync(RANK_FILE, JSON.stringify(ranks, null, 2)); }
+    catch(e){ console.warn('[랭킹] 저장 실패:', e.message); }
+  }, 1000);
+}
+function entryFor(name, teamName){
+  if(!ranks[name]) ranks[name] = {name, teamName:teamName||'', w:0, l:0, rf:0, ra:0, streak:0, best:0, lastSeen:0};
+  const e = ranks[name];
+  if(teamName) e.teamName = teamName;
+  e.lastSeen = Date.now();
+  return e;
+}
+function recordResult(name, teamName, myRuns, oppRuns, win){
+  const e = entryFor(name, teamName);
+  e.rf += myRuns; e.ra += oppRuns;
+  if(win){ e.w++; e.streak = e.streak > 0 ? e.streak+1 : 1; }
+  else   { e.l++; e.streak = e.streak < 0 ? e.streak-1 : -1; }
+  if(e.streak > e.best) e.best = e.streak;
+  saveRanksSoon();
+}
+/* 승률 → 승수 → 득실차 순으로 정렬한 상위 20명 */
+function rankingList(limit){
+  return Object.values(ranks)
+    .filter(e => e.w + e.l > 0)
+    .sort((a,b)=>{
+      const pa = a.w/(a.w+a.l), pb = b.w/(b.w+b.l);
+      return pb - pa || b.w - a.w || (b.rf-b.ra) - (a.rf-a.ra);
+    })
+    .slice(0, limit || 20)
+    .map(e => ({name:e.name, teamName:e.teamName, w:e.w, l:e.l, rf:e.rf, ra:e.ra, best:e.best}));
+}
+loadRanks();
+
 /* ================= 매치메이킹 & 세션 관리 ================= */
 let waiting = null; // 대기 중인 한 명의 접속 정보 {ws, info}
 const matches = new Map(); // matchId -> match state
@@ -217,7 +273,7 @@ function resolveFinishedAtBat(match, res, battingSide, batter){
       }
     }
   }
-  setTimeout(()=>{ if(matches.has(match.id)) broadcastTurnPrompt(match); }, 900);
+  setTimeout(()=>{ if(matches.has(match.id)) broadcastTurnPrompt(match); }, AB_DELAY);
 }
 
 function finishMatch(match){
@@ -232,6 +288,17 @@ function finishMatch(match){
   };
   send(match.home.ws, payload);
   send(match.away.ws, payload);
+
+  /* 랭킹에 결과 반영 */
+  recordResult(match.home.info.name, match.home.info.teamName, match.runsHome, match.runsAway, winner==='home');
+  recordResult(match.away.info.name, match.away.info.teamName, match.runsAway, match.runsHome, winner==='away');
+  console.log(`[경기종료] ${match.home.info.name} ${match.runsHome} : ${match.runsAway} ${match.away.info.name}`);
+
+  /* 갱신된 랭킹을 두 사람 모두에게 보내준다 */
+  const rankMsg = { type:'ranking', list: rankingList(20) };
+  send(match.home.ws, rankMsg);
+  send(match.away.ws, rankMsg);
+
   matches.delete(match.id);
 }
 
@@ -317,6 +384,11 @@ wss.on('connection', (ws)=>{
       const res = computeSwingResult(batter, pitcherMod, swingType, timingQuality);
       match.pendingPitchInfo = null;
       resolveFinishedAtBat(match, res, battingSide, batter);
+      return;
+    }
+
+    if(msg.type === 'ranking'){
+      send(ws, { type:'ranking', list: rankingList(20) });
       return;
     }
 

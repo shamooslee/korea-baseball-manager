@@ -147,6 +147,8 @@ let state = {
   goldenGloveClaimed:false,
   schedule:[],           // [{teamId, played, win, score}]
   modal:null,            // {type:'...', data:...}
+  pvpRecord:null,        // 실시간 대결 전적 {w,l,streak,bestStreak,games[]}
+  ranking:null,          // 서버에서 받아온 전체 랭킹 (저장 안 함)
   detail:null,           // {id, ptype} - 선수 상세 화면에서 보고 있는 선수
   fuse:null,             // {targetId, ptype, selected:[]} - 합성 중인 정보
   lastResult:null,
@@ -179,7 +181,7 @@ const SAVE_KEY = 'korea_baseball_manager_v2';
 const SAVE_FIELDS = ['user','coins','tier','season','team','roster','lineup','starterPitcherId',
   'aiTeams','packs','dailyUsed','dailyDate','dailyCandidates','monthlyDate','monthlyPlayers',
   'monthlyClaimed','goldenGloveDate','goldenGlovePlayers','goldenGloveClaimed','schedule','stats',
-  'standings'];
+  'standings', 'pvpRecord'];
 let saveTimer = null;
 let saveStatus = '';
 let saveWorks = true;
@@ -221,6 +223,7 @@ function loadGame(){
     ensureAllGrowth();   /* 성장 기능이 없던 시절 저장본이면 lv/exp를 채워준다 */
     ensureAllStats();    /* 기록 기능이 없던 시절 저장본이면 기록칸을 만들어준다 */
     ensureStandings();
+    ensurePvpRecord();
     refreshAllConditions();  /* 날짜가 지났으면 오늘의 컨디션을 새로 뽑는다 */
     state.screen = state.user ? 'home' : 'login';
     saveStatus = '이어하기';
@@ -244,6 +247,9 @@ function doReset(){
   state.monthlyDate = null; state.monthlyPlayers = {}; state.monthlyClaimed = false;
   state.goldenGloveDate = null; state.goldenGlovePlayers = []; state.goldenGloveClaimed = false;
   state.stats = {hits:0, homeruns:0, leagueWins:0, leagueGames:0, friendlyPlayed:0, packsOpened:0};
+  state.pvpRecord = {w:0, l:0, streak:0, bestStreak:0, games:[]};   /* 실시간 대결 전적도 함께 초기화 */
+  state.ranking = null;
+  state.standings = {};
   claimedMissions = {};
   state.modal = null;
   state.screen = 'login';
@@ -1522,10 +1528,60 @@ function connectPvp(){
     render();
   };
 }
+/* ================= 실시간 대결 전적 · 랭킹 =================
+   실시간 대결은 진짜 사람과 하는 경기다. 그 결과를 내 기기에 쌓아두고,
+   서버가 켜져 있으면 전체 플레이어 랭킹도 받아온다. */
+function ensurePvpRecord(){
+  if(!state.pvpRecord) state.pvpRecord = {w:0, l:0, streak:0, bestStreak:0, games:[]};
+  if(!Array.isArray(state.pvpRecord.games)) state.pvpRecord.games = [];
+  return state.pvpRecord;
+}
+function pvpWinRate(){
+  const R = ensurePvpRecord();
+  const g = R.w + R.l;
+  return g ? R.w/g : 0;
+}
+function streakText(n){
+  if(n > 0) return `${n}연승 🔥`;
+  if(n < 0) return `${-n}연패`;
+  return '-';
+}
+function recordPvpResult(msg){
+  const P = state.pvp;
+  if(P.recorded) return;          /* 같은 경기를 두 번 세지 않는다 */
+  P.recorded = true;
+  const R = ensurePvpRecord();
+  const win = msg.winner === P.role;
+  const myRuns  = P.role==='home' ? msg.runsHome : msg.runsAway;
+  const oppRuns = P.role==='home' ? msg.runsAway : msg.runsHome;
+  if(win){ R.w++; R.streak = R.streak > 0 ? R.streak+1 : 1; }
+  else    { R.l++; R.streak = R.streak < 0 ? R.streak-1 : -1; }
+  if(R.streak > R.bestStreak) R.bestStreak = R.streak;
+  R.games.unshift({
+    win, myRuns, oppRuns,
+    opp: P.opponentName || '상대',
+    oppTeam: P.opponentTeamName || '',
+    date: today()
+  });
+  if(R.games.length > 20) R.games.length = 20;
+}
+/* 서버에 랭킹을 달라고 요청한다 */
+function requestRanking(){
+  const ws = state.pvp.ws;
+  if(ws && ws.readyState === 1){
+    try{ ws.send(JSON.stringify({type:'ranking'})); }catch(e){}
+  }
+}
+
 function handlePvpMessage(msg){
   const P = state.pvp;
-  if(msg.type==='queued'){ P.status='queued'; render(); }
+  if(msg.type==='queued'){ P.status='queued'; requestRanking(); render(); }
+  else if(msg.type==='ranking'){
+    state.ranking = { list: Array.isArray(msg.list) ? msg.list : [], updatedAt: Date.now() };
+    render();
+  }
   else if(msg.type==='matched'){
+    P.recorded = false;
     P.status='matched'; P.role=msg.role; P.opponentName=msg.opponentName; P.opponentTeamName=msg.opponentTeamName;
     P.half='top'; P.inning=1; P.outs=0; P.bases=[false,false,false];
     P.runsHome=0; P.runsAway=0; P.hitsHome=0; P.hitsAway=0; P.log=[]; P.finalResult=null;
@@ -1563,6 +1619,8 @@ function handlePvpMessage(msg){
   }
   else if(msg.type==='game_over'){
     P.status='ended'; P.finalResult=msg;
+    recordPvpResult(msg);      /* 내 전적에 기록 */
+    requestRanking();          /* 갱신된 랭킹 받아오기 */
     render();
   }
   else if(msg.type==='opponent_left'){
@@ -1760,6 +1818,95 @@ function screenTeamSelect(){
   </div>`;
 }
 
+/* 홈 화면에 붙는 실시간 대결 전적 요약 */
+function pvpSummaryCard(){
+  const R = ensurePvpRecord();
+  const g = R.w + R.l;
+  const last = R.games[0];
+  return `
+  <div class="card">
+    <div class="row">
+      <b>⚡ 실시간 대결 전적</b>
+      <span class="statline">진짜 사람과의 경기</span>
+    </div>
+    ${g ? `
+      <div style="display:flex;justify-content:space-around;text-align:center;margin:12px 0 6px;">
+        <div><div style="font-size:22px;font-weight:900;color:#7fdc8a;">${R.w}</div><div class="statline">승</div></div>
+        <div><div style="font-size:22px;font-weight:900;color:#ff8a8a;">${R.l}</div><div class="statline">패</div></div>
+        <div><div style="font-size:22px;font-weight:900;">${fmtAvg(pvpWinRate())}</div><div class="statline">승률</div></div>
+        <div><div style="font-size:22px;font-weight:900;color:#ffd54a;">${R.streak===0?'-':(R.streak>0?R.streak:-R.streak)}</div><div class="statline">${R.streak<0?'연패':'연승'}</div></div>
+      </div>
+      ${last ? `<div class="statline" style="text-align:center;">
+        최근: ${last.win?'<b style="color:#7fdc8a;">승</b>':'<b style="color:#ff8a8a;">패</b>'}
+        ${last.myRuns}:${last.oppRuns} vs ${last.opp}
+      </div>` : ''}
+    ` : `<div class="statline" style="margin:10px 0;">아직 실시간 대결 기록이 없어요. 친구와 한 판 해보세요!</div>`}
+    <div class="row" style="margin-top:10px;gap:8px;">
+      <button class="btn small" style="flex:1;" onclick="goto('pvpconnect')">⚡ 대결하러 가기</button>
+      <button class="btn small secondary" style="flex:1;" onclick="goto('pvprank')">🏅 랭킹 보기</button>
+    </div>
+  </div>`;
+}
+
+/* 랭킹 화면: 서버 전체 랭킹 + 내 최근 경기 */
+function screenPvpRank(){
+  const R = ensurePvpRecord();
+  const rk = state.ranking;
+  const myName = state.user ? state.user.nickname : '';
+
+  const rankRows = (rk && rk.list.length) ? rk.list.map((r,i)=>{
+    const me = r.name === myName;
+    const rank = i+1;
+    const medal = rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':rank;
+    const g = r.w + r.l;
+    return `<tr style="${me?'background:#1d2536;font-weight:800;':''}">
+      <td>${medal}</td>
+      <td style="text-align:left;padding-left:6px;">${r.name}${me?' ⭐':''}<div class="statline">${r.teamName||''}</div></td>
+      <td>${g}</td><td>${r.w}</td><td>${r.l}</td>
+      <td>${g ? fmtAvg(r.w/g) : '-'}</td>
+      <td>${r.best>0?r.best+'연승':'-'}</td>
+    </tr>`;
+  }).join('') : '';
+
+  const gameRows = R.games.length ? R.games.map(x=>`
+    <div class="lineupRow">
+      <div class="num" style="background:${x.win?'#2e7d32':'#8a0338'};">${x.win?'승':'패'}</div>
+      <div class="nm">${x.opp}<div class="statline">${x.oppTeam||''}</div></div>
+      <div class="st"><b>${x.myRuns} : ${x.oppRuns}</b><div class="statline">${x.date}</div></div>
+    </div>`).join('') : `<div class="statline">아직 경기 기록이 없어요.</div>`;
+
+  return `${nav('실시간 대결 랭킹', `내 전적 ${R.w}승 ${R.l}패 · ${streakText(R.streak)}`)}
+  <div class="screen">
+    <div class="card">
+      <div class="row"><b>🏅 전체 랭킹</b>
+        <span class="statline">${rk ? '서버에서 받아옴' : '서버 미접속'}</span></div>
+      ${rankRows ? `
+        <table class="box">
+          <thead><tr><th>순위</th><th>플레이어</th><th>경기</th><th>승</th><th>패</th><th>승률</th><th>최고연승</th></tr></thead>
+          <tbody>${rankRows}</tbody>
+        </table>` : `
+        <div class="statline" style="margin-top:8px;line-height:1.8;">
+          전체 랭킹은 <b>실시간 대결 서버에 접속했을 때</b> 받아올 수 있어요.<br>
+          대결하러 가서 서버에 접속하면 여기에 순위가 나타나요.
+        </div>
+        <button class="btn" onclick="goto('pvpconnect')">⚡ 서버 접속하러 가기</button>`}
+    </div>
+
+    <div class="card">
+      <div class="row"><b>내 최고 기록</b></div>
+      <div class="statline" style="margin-top:6px;line-height:1.9;">
+        총 ${R.w+R.l}경기 · ${R.w}승 ${R.l}패 · 승률 ${R.w+R.l ? fmtAvg(pvpWinRate()) : '-'}<br>
+        지금 ${streakText(R.streak)} · 최고 ${R.bestStreak>0 ? R.bestStreak+'연승' : '-'}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row"><b>최근 경기 결과</b><span class="statline">최근 20경기</span></div>
+      <div style="margin-top:8px;">${gameRows}</div>
+    </div>
+  </div>`;
+}
+
 function screenHome(){
   const record = `${state.stats.leagueWins}승 ${state.stats.leagueGames-state.stats.leagueWins}패`;
   return `
@@ -1772,6 +1919,7 @@ function screenHome(){
       <div class="row"><b>오늘의 선수 뽑기</b><span class="statline">${state.dailyUsed && state.dailyDate===today() ? '완료' : '가능'}</span></div>
       <button class="btn" onclick="openDaily()">🎁 데일리 선수 선택하기</button>
     </div>
+    ${pvpSummaryCard()}
     <div class="menuGrid">
       <div class="menuItem" onclick="goto('lineup')"><div class="ic">📋</div><div class="lb">라인업 설정</div></div>
       <div class="menuItem" onclick="goto('missions')"><div class="ic">🎯</div><div class="lb">과제</div></div>
@@ -1782,6 +1930,7 @@ function screenHome(){
       <div class="menuItem" onclick="goto('stats')"><div class="ic">📈</div><div class="lb">팀 기록실</div></div>
       <div class="menuItem" onclick="goto('friendly')"><div class="ic">🤝</div><div class="lb">친선경기</div></div>
       <div class="menuItem" onclick="goto('pvpconnect')"><div class="ic">⚡</div><div class="lb">실시간 대결</div></div>
+      <div class="menuItem" onclick="goto('pvprank')"><div class="ic">🏅</div><div class="lb">대결 랭킹</div></div>
       <div class="menuItem" onclick="goto('shop')"><div class="ic">🛒</div><div class="lb">상점</div></div>
       <div class="menuItem" onclick="goto('packs')"><div class="ic">📦</div><div class="lb">팩 개봉 (${state.packs.length})</div></div>
       <div class="menuItem" onclick="goto('roster')"><div class="ic">👥</div><div class="lb">선수 육성</div></div>
@@ -2595,6 +2744,7 @@ function render(){
     case 'playerdetail': html = screenPlayerDetail(); break;
     case 'fuse': html = screenFuse(); break;
     case 'standings': html = screenStandings(); break;
+    case 'pvprank': html = screenPvpRank(); break;
     case 'stats': html = screenStats(); break;
     case 'matchresult': html = screenMatchResult(); break;
     default: html = screenTeamSelect();
