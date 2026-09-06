@@ -1,0 +1,16 @@
+name = "yagu-pvp"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Durable Object = "계속 살아있는 방" 하나. 매칭·경기진행·랭킹을 여기서 처리한다.
+[[durable_objects.bindings]]
+name = "GAME_LOBBY"
+class_name = "GameLobby"
+
+# 무료 플랜에서는 SQLite 방식 Durable Object를 써야 한다.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameLobby"]
+
+[vars]
+AB_DELAY = "900"
