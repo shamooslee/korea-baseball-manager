@@ -1,13 +1,14 @@
 # ⚾ 코리아 야구 매니저
 
+[![플레이하기](https://img.shields.io/badge/%E2%9A%BE%20&nbsp;&nbsp;%EB%B0%94%EB%A1%9C%20%ED%94%8C%EB%A0%88%EC%9D%B4%ED%95%98%EA%B8%B0-2E7D32?style=for-the-badge)](https://shamooslee.github.io/korea-baseball-manager/)
+
 초등학교 4학년이 만든 야구 매니저 게임입니다.
 팀을 고르고, 선수를 키우고, 직접 공을 던지고 치면서 리그 우승에 도전하세요.
 
 ## 🎮 바로 플레이
 
-👉 **https://USERNAME.github.io/korea-baseball-manager/**
+👉 **https://shamooslee.github.io/korea-baseball-manager/**
 
-(위 주소는 GitHub Pages를 켠 뒤에 만들어집니다. USERNAME 부분을 본인 깃허브 아이디로 바꿔주세요.)
 
 ## 주요 기능
 
