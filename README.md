@@ -1,4 +1,4 @@
-# ⚾ 코리아 야구 매니저
+# ⚾ 야구선수훈련게임
 
 [![플레이하기](https://img.shields.io/badge/%E2%9A%BE%20&nbsp;&nbsp;%EB%B0%94%EB%A1%9C%20%ED%94%8C%EB%A0%88%EC%9D%B4%ED%95%98%EA%B8%B0-2E7D32?style=for-the-badge)](https://shamooslee.github.io/korea-baseball-manager/)
 
