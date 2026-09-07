@@ -82,6 +82,10 @@ const LEAGUE_TEAMS = [
   {id:'gongryong', name:'창원 번개공룡', city:'창원', color:'#2E7D32', symbol:'🦖 공룡'},
   {id:'yeongung', name:'고척 영웅단', city:'고척', color:'#7A0B14', symbol:'🦸 영웅'}
 ];
+/* 실시간 대결 서버 주소. 친구와 대결하려면 둘 다 같은 주소로 접속하면 된다.
+   내 컴퓨터에서 서버를 직접 켜서 할 때는 ws://localhost:8080 으로 바꾸면 된다. */
+const DEFAULT_PVP_SERVER = 'wss://yagu-pvp.hunastay.workers.dev';
+
 const POSITIONS = ['C','1B','2B','3B','SS','LF','CF','RF','DH'];
 const SURNAMES = ['김','이','박','최','정','강','조','윤','장','임','한','오','서','신','권','황','안','송','전','홍'];
 const GIVEN = ['민준','서준','도윤','예준','시우','하준','주원','지호','준서','건우','현우','우진','민재','지훈','동현','성민','재현','태준','승우','유준','재영','재훈','상현','도현','민성','승현','정우','한결','태윤','규민'];
@@ -153,7 +157,7 @@ let state = {
   fuse:null,             // {targetId, ptype, selected:[]} - 합성 중인 정보
   lastResult:null,
   live:null,
-  pvp:{ ws:null, serverUrl:'', status:'idle', role:null, opponentName:null, opponentTeamName:null,
+  pvp:{ ws:null, serverUrl:DEFAULT_PVP_SERVER, status:'idle', role:null, opponentName:null, opponentTeamName:null,
         half:'top', inning:1, outs:0, bases:[false,false,false],
         runsHome:0, runsAway:0, hitsHome:0, hitsAway:0, log:[], myTurn:null, batterName:null, finalResult:null,
         pitchAim:{type:'fastball', x:0, y:0}, swingType:'contact', battingPhase:'idle',
@@ -1491,9 +1495,12 @@ function finishLiveGame(){
 }
 
 /* ================= REAL-TIME PVP (WebSocket) ================= */
-function connectPvp(){
+/* 기본 서버로 바로 접속 (주소를 몰라도 누르기만 하면 된다) */
+function connectPvpDefault(){ connectPvp(DEFAULT_PVP_SERVER); }
+
+function connectPvp(forcedUrl){
   const urlInput = document.getElementById('pvpUrlInput');
-  const url = (urlInput && urlInput.value || '').trim();
+  const url = (forcedUrl || (urlInput && urlInput.value) || '').trim();
   if(!url){ state.modal = {type:'info', text:'서버 주소를 입력해주세요.'}; render(); return; }
   state.pvp.serverUrl = url;
   state.pvp.status = 'connecting';
@@ -2502,14 +2509,20 @@ function screenPvpConnect(){
   } else {
     body = `
       <div class="card">
-        <div class="statline" style="margin-bottom:8px;">실시간 대결 서버 주소를 입력하세요</div>
-        <input id="pvpUrlInput" placeholder="wss://your-server.com" value="${P.serverUrl||''}"
-          style="width:100%;padding:12px;border-radius:10px;border:1px solid #2a3242;background:#0f131b;color:#fff;font-size:13px;margin-bottom:10px;">
-        <button class="btn" onclick="connectPvp()">접속 후 매칭 시작</button>
+        <div class="row"><b>⚡ 진짜 사람과 대결</b><span class="statline">한 명은 투구, 한 명은 타격</span></div>
+        <button class="btn" style="margin-top:10px;" onclick="connectPvpDefault()">🎮 바로 대결 시작</button>
+        <div class="statline" style="margin-top:8px;text-align:center;">
+          친구도 같은 게임에서 '바로 대결 시작'을 누르면 자동으로 만나요
+        </div>
       </div>
-      <div class="card statline">
-        실시간 대결은 별도로 배포한 전용 서버가 필요해요. 서버를 아직 준비하지 않았다면
-        전달받은 서버 코드를 먼저 배포한 뒤, 그 주소를 위 칸에 입력해주세요.
+      <div class="card">
+        <div class="statline" style="margin-bottom:8px;">다른 서버로 접속하기 (직접 서버를 켠 경우)</div>
+        <input id="pvpUrlInput" placeholder="wss://서버주소" value="${P.serverUrl||DEFAULT_PVP_SERVER}"
+          style="width:100%;padding:12px;border-radius:10px;border:1px solid #2a3242;background:#0f131b;color:#fff;font-size:13px;margin-bottom:10px;">
+        <button class="btn secondary" onclick="connectPvp()">이 주소로 접속</button>
+        <div class="statline" style="margin-top:8px;">
+          내 컴퓨터에서 서버를 켰다면 <b>ws://localhost:8080</b>
+        </div>
       </div>`;
   }
   return `${nav('실시간 대결')}<div class="screen">${body}</div>`;
