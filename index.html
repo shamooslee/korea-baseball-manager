@@ -994,7 +994,22 @@ function playMatch(oppTeamId, isLeague){
 /* ================= 3D LIVE FIELD (Three.js) ================= */
 const live3D = { ready:false, animating:false };
 function initLive3D(){
-  if(live3D.ready) return;
+  if(live3D.ready || live3D.failed) return;
+  /* 3D 그림 라이브러리를 인터넷에서 못 불러온 경우(느린 와이파이, 차단된 망 등)
+     3D 화면만 포기하고 경기는 그대로 할 수 있게 한다. */
+  if(typeof THREE === 'undefined'){
+    live3D.failed = true;
+    console.warn('[3D] three.js를 불러오지 못해 3D 화면 없이 진행합니다.');
+    return;
+  }
+  try{ initLive3DInner(); }
+  catch(e){
+    live3D.failed = true;
+    live3D.ready = false;
+    console.warn('[3D] 3D 화면을 만들지 못했습니다:', e && e.message);
+  }
+}
+function initLive3DInner(){
   const holder = document.getElementById('live3dHolder');
   const w = holder.clientWidth || 380, h = holder.clientHeight || 210;
   const scene = new THREE.Scene();
@@ -1061,10 +1076,20 @@ function resetBallAtMound(){
   live3D.bat.rotation.z = Math.PI/2.6;
   live3D.renderer.render(live3D.scene, live3D.camera);
 }
+/* 3D 화면이 있을 때만 그만큼 자리를 비워둔다.
+   3D를 못 쓰면 빈 공간 대신 짧은 안내를 보여준다. */
+function live3dGap(){
+  if(live3D.ready) return '<div class="live3dSpacer"></div>';
+  if(live3D.failed) return '<div class="card" style="margin-top:0;padding:10px;"><div class="statline">📺 3D 화면을 불러오지 못했어요 (인터넷 확인). 경기는 그대로 할 수 있어요.</div></div>';
+  return '';
+}
 function showLive3D(show){
   const holder = document.getElementById('live3dHolder');
-  holder.style.display = show ? 'block' : 'none';
-  if(show){ initLive3D(); resetBallAtMound(); }
+  if(!holder) return;
+  if(show) initLive3D();
+  /* 3D를 못 쓰면 빈 칸을 띄우지 않는다 */
+  holder.style.display = (show && live3D.ready) ? 'block' : 'none';
+  if(show && live3D.ready) resetBallAtMound();
 }
 function tween(duration, onFrame, onDone){
   const start = performance.now();
@@ -1090,18 +1115,31 @@ function pitchVisualParams(info){
   const dy = clamp(info.dy || 0, -1.4, 1.4);
   return { dx, dy, breakDip: isBreaking ? 0.22 : 0.04 };
 }
+/* 자동 진행일 때는 연출을 빠르게 넘긴다.
+   직접 플레이할 때는 타이밍을 맞춰야 하므로 원래 속도를 유지한다. */
+function speedFactor(){
+  const L = state.live;
+  return (L && L.autoPlay) ? 0.45 : 1;
+}
 function animatePitchFlight(info, onArrive){
+  if(!live3D.ready){
+    /* 3D 없이도 공이 도착한 것으로 치고 진행한다 */
+    live3D.animating = false;
+    setTimeout(()=>{ if(onArrive) onArrive(); }, 380);
+    return;
+  }
   live3D.animating = true;
   const vis = pitchVisualParams(info);
   const ball = live3D.ball;
   ball.position.set(0,1.55,-15);
-  tween(520, (t)=>{
+  tween(520 * speedFactor(), (t)=>{
     ball.position.x = vis.dx * 0.55 * t;
     ball.position.y = 1.55 - 0.35*t - vis.breakDip*Math.sin(t*Math.PI)*t + vis.dy*0.25*t;
     ball.position.z = -15 + 15*t;
   }, onArrive);
 }
 function animateContactOutcome(res, onDone){
+  if(!live3D.ready){ live3D.animating = false; if(onDone) onDone(); return; }
   const swings = res!=='BB';
   const bat = live3D.bat, ball = live3D.ball;
   if(swings){ bat.rotation.z = -0.6; }
@@ -1111,7 +1149,7 @@ function animateContactOutcome(res, onDone){
     if(dist>0){
       const sideDrift = (Math.random()-0.5)*6;
       const arc = 2 + dist*0.09;
-      tween(res==='HR'?900:600, (t2)=>{
+      tween((res==='HR'?900:600) * speedFactor(), (t2)=>{
         ball.position.x = sideDrift*t2;
         ball.position.z = 0 - dist*t2;
         ball.position.y = 0.3 + Math.sin(t2*Math.PI)*arc;
@@ -1302,6 +1340,9 @@ function finishLiveAtBat(res, batter, label, tally, side){
 /* 공 하나의 결과를 카운트에 반영한다. 4볼이면 볼넷, 3스트라이크면 삼진 */
 function applyPitchCount(o, batter, label, tally, side){
   const L = state.live; if(!L) return;
+  /* 공 하나가 끝났으니 '연출 중' 표시를 반드시 푼다.
+     이걸 안 풀면 다음 공을 던지거나 칠 수 없어서 경기가 멈춰버린다. */
+  live3D.animating = false;
   const c = L.count;
   let msg = '';
   if(o.kind === 'ball'){ c.b++; msg = `볼`; }
@@ -1465,7 +1506,7 @@ function afterLiveAtBat(){
   }
   resetBallAtMound();
   render();
-  if(L.autoPlay) setTimeout(liveAutoAdvance, 650);
+  if(L.autoPlay) setTimeout(liveAutoAdvance, 260);
 }
 function finishLiveGame(){
   const L = state.live;
@@ -2171,7 +2212,7 @@ function screenLiveGame(){
   }
   return `${nav('리그모드 · ' + (L.autoPlay?'자동 진행':'직접 플레이'), `${L.inning}회 ${L.half==='top'?'초':'말'} · ${L.half==='top'?L.oppTeamName:state.team.name} 공격`)}
   <div class="screen">
-    <div class="live3dSpacer"></div>
+    ${live3dGap()}
     <div class="card" style="margin-top:0;">
       <div class="scoreBig" style="font-size:26px;">${L.userRuns} : ${L.oppRuns}</div>
       ${countBox(L)}
@@ -2578,7 +2619,7 @@ function screenPvpMatch(){
   }
   return `${nav('실시간 대결 · vs ' + (P.opponentName||''), `${P.inning}회 ${P.half==='top'?'초':'말'}`)}
   <div class="screen">
-    <div class="live3dSpacer"></div>
+    ${live3dGap()}
     <div class="card" style="margin-top:0;">
       <div class="scoreBig" style="font-size:26px;">${myRuns} : ${oppRuns}</div>
       <div class="row" style="justify-content:center;gap:14px;font-size:12px;color:#9aa4b2;">
