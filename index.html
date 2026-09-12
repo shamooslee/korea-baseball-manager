@@ -58,6 +58,28 @@
   #live3dHolder canvas{display:block;width:100%;height:100%;}
   .live3dSpacer{height:214px;}
   .liveTag{position:absolute;top:6px;left:10px;background:rgba(0,0,0,0.45);color:#fff;font-size:10px;padding:3px 8px;border-radius:6px;z-index:5;}
+
+  /* ===== 실시간 화면 ===== */
+  .tabBar{display:flex;gap:8px;margin-bottom:10px;}
+  .tabBtn{flex:1;padding:10px;border-radius:10px;border:1px solid #2a3242;background:#151a24;color:#9aa4b2;font-size:13px;font-weight:700;}
+  .tabBtn.active{background:linear-gradient(135deg,var(--team),#8a0338);color:#fff;border-color:transparent;}
+  .boardCard{background:#151a24;border:1px solid #2a3242;border-radius:12px;padding:10px;margin-bottom:10px;}
+  .boardTop{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;}
+  .liveDot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff4d4d;margin-right:5px;animation:blip 1s infinite;}
+  @keyframes blip{0%,100%{opacity:1}50%{opacity:.25}}
+  .stateChip{font-size:11px;font-weight:800;padding:3px 8px;border-radius:999px;white-space:nowrap;}
+  .chipLive{background:rgba(255,77,77,0.18);color:#ff7a7a;}
+  .chipEnd{background:rgba(154,164,178,0.18);color:#9aa4b2;}
+  .chipSoon{background:rgba(255,213,74,0.18);color:#ffd54a;}
+  .boardScroll{overflow-x:auto;}
+  table.board{border-collapse:collapse;width:100%;min-width:340px;font-size:12px;}
+  table.board th,table.board td{border-bottom:1px solid #222a36;padding:5px 4px;text-align:center;color:#cdd5e0;}
+  table.board th{color:#79828f;font-size:10px;font-weight:700;}
+  table.board td.tn{text-align:left;font-weight:700;white-space:nowrap;padding-left:2px;}
+  table.board td.rr{font-weight:900;color:#fff;}
+  table.board th.now{color:#ff7a7a;}
+  table.board td.now{background:rgba(255,77,77,0.10);}
+  .bigScore{font-size:15px;font-weight:900;color:#fff;}
 </style>
 </head>
 <body>
@@ -1993,6 +2015,7 @@ function screenHome(){
       <div class="menuItem" onclick="goto('missions')"><div class="ic">🎯</div><div class="lb">과제</div></div>
       <div class="menuItem" onclick="goto('monthly')"><div class="ic">🌟</div><div class="lb">이달의 선수</div></div>
       <div class="menuItem" onclick="goto('goldenglove')"><div class="ic">🥇</div><div class="lb">골든글러브 영입</div></div>
+      <div class="menuItem" onclick="goto('livenow')"><div class="ic">📡</div><div class="lb">실시간</div></div>
       <div class="menuItem" onclick="goto('league')"><div class="ic">🏆</div><div class="lb">리그모드</div></div>
       <div class="menuItem" onclick="goto('standings')"><div class="ic">📊</div><div class="lb">순위표</div></div>
       <div class="menuItem" onclick="goto('stats')"><div class="ic">📈</div><div class="lb">팀 기록실</div></div>
@@ -2797,6 +2820,223 @@ function renderModal(){
 }
 
 /* ================= MAIN RENDER ================= */
+/* ================= 실시간 (LIVE NOW) =================
+   [우리 리그] 우리가 만든 10팀이 진짜 시계에 맞춰 경기를 한다.
+     - 하루 5경기, 시작 시각은 10:00 / 12:30 / 15:00 / 17:30 / 20:00
+     - 1이닝(초·말 합쳐서)은 실제 5분. 9이닝이면 45분짜리 경기.
+     - 점수는 '날짜 + 경기번호'로 정해지는 규칙으로 계산하므로,
+       새로고침해도 점수가 제멋대로 바뀌지 않는다.
+   [KBO] 진짜 프로야구 점수는 우리 서버(Cloudflare)를 거쳐서 받아온다. */
+
+const LIVE_START_MIN = [600, 750, 900, 1050, 1200];   /* 10:00, 12:30, 15:00, 17:30, 20:00 (분 단위) */
+const MIN_PER_HALF = 2.5;                              /* 초 또는 말 한 번에 실제 2.5분 */
+
+/* 같은 씨앗(숫자)을 넣으면 항상 같은 순서의 난수가 나오는 함수 */
+function seedRand(seed){
+  let t = seed >>> 0;
+  return function(){
+    t = (t + 0x6D2B79F5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function seedOf(str){
+  let h = 2166136261;
+  for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function liveDateKey(){
+  const d = new Date();
+  return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
+}
+function nowMinutes(){
+  const d = new Date();
+  return d.getHours()*60 + d.getMinutes() + d.getSeconds()/60;
+}
+
+/* 오늘의 5경기 대진을 정한다 (같은 날이면 항상 같은 대진) */
+function todayFixtures(){
+  const dk = liveDateKey();
+  const r = seedRand(seedOf('fixture'+dk));
+  const ids = LEAGUE_TEAMS.map(t=>t.id);
+  for(let i=ids.length-1;i>0;i--){ const j=Math.floor(r()*(i+1)); const tmp=ids[i]; ids[i]=ids[j]; ids[j]=tmp; }
+  const out = [];
+  for(let i=0;i<5;i++) out.push({ idx:i, away:ids[i*2], home:ids[i*2+1], startMin:LIVE_START_MIN[i] });
+  return out;
+}
+/* 한 번(초 또는 말)에 몇 점 나는지 — 실제 야구와 비슷하게 맞춘 확률 */
+function halfInningRuns(r){
+  const x = r();
+  if(x < 0.66) return 0;
+  if(x < 0.83) return 1;
+  if(x < 0.92) return 2;
+  if(x < 0.96) return 3;
+  if(x < 0.985) return 4;
+  return 5;
+}
+/* 경기 하나의 현재 상태를 계산한다 */
+function computeGame(fx){
+  const elapsed = nowMinutes() - fx.startMin;
+  const away = LEAGUE_TEAMS.find(t=>t.id===fx.away);
+  const home = LEAGUE_TEAMS.find(t=>t.id===fx.home);
+  const g = { fx, away, home, aw:[], hm:[], aR:0, hR:0, aH:0, hH:0, status:'before', inning:0, half:'초', minsToStart:Math.max(0, Math.ceil(-elapsed)) };
+  if(elapsed < 0) return g;
+
+  const donePairs = Math.floor(elapsed / MIN_PER_HALF);   /* 끝난 '초/말' 개수 */
+  const r = seedRand(seedOf('game'+liveDateKey()+'#'+fx.idx));
+  for(let inn=1; inn<=9; inn++){
+    for(let h=0; h<2; h++){
+      const order = (inn-1)*2 + h;                        /* 0부터 세는 순번 */
+      const runs = halfInningRuns(r);
+      const hits = runs + (r()<0.45?1:0) + (r()<0.3?1:0);
+      if(order >= donePairs){                             /* 아직 안 한 이닝 */
+        if(h===0) g.aw.push(null); else g.hm.push(null);
+        continue;
+      }
+      /* 9회말은 홈팀이 이기고 있으면 치지 않는다 (실제 야구 규칙) */
+      if(inn===9 && h===1 && g.hR > g.aR){ g.hm.push('-'); continue; }
+      if(h===0){ g.aw.push(runs); g.aR += runs; g.aH += hits; }
+      else     { g.hm.push(runs); g.hR += runs; g.hH += hits; }
+    }
+  }
+  if(donePairs >= 18){ g.status = 'end'; g.inning = 9; }
+  else { g.status = 'live'; g.inning = Math.floor(donePairs/2)+1; g.half = (donePairs%2===0)?'초':'말'; }
+  return g;
+}
+
+/* 어두운 팀 색은 검은 배경에서 글씨가 안 보이므로 흰색 쪽으로 밝혀준다 */
+function readable(hex){
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if(!m) return '#cdd5e0';
+  const n = parseInt(m[1],16);
+  let r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+  const lum = (0.299*r + 0.587*g + 0.114*b)/255;
+  if(lum < 0.55){
+    const k = (0.55 - lum) / 0.55 * 0.75;
+    r = Math.round(r + (255-r)*k); g = Math.round(g + (255-g)*k); b = Math.round(b + (255-b)*k);
+  }
+  return `rgb(${r},${g},${b})`;
+}
+function boardRow(name, color, cells, R, H, nowIdx, isHalf){
+  const tds = cells.map((v,i)=>{
+    const cur = (nowIdx === i*2 + (isHalf?1:0));
+    return `<td class="${cur?'now':''}">${v===null?'':v}</td>`;
+  }).join('');
+  return `<tr><td class="tn" style="color:${readable(color)}">${name}</td>${tds}<td class="rr">${R}</td><td>${H}</td></tr>`;
+}
+function gameBoard(g){
+  let chip, title;
+  const pre = (g.status === 'before');
+  if(g.status==='before'){
+    const hh = String(Math.floor(g.fx.startMin/60)).padStart(2,'0');
+    const mm = String(g.fx.startMin%60).padStart(2,'0');
+    chip = `<span class="stateChip chipSoon">${hh}:${mm} 시작</span>`;
+    const hLeft = Math.floor(g.minsToStart/60);
+    title = `<span class="statline">${hLeft>0?hLeft+'시간 ':''}${g.minsToStart%60}분 뒤</span>`;
+  } else if(g.status==='live'){
+    chip = `<span class="stateChip chipLive"><span class="liveDot"></span>${g.inning}회 ${g.half}</span>`;
+    title = `<span class="bigScore">${g.aR} : ${g.hR}</span>`;
+  } else {
+    chip = `<span class="stateChip chipEnd">경기 종료</span>`;
+    title = `<span class="bigScore">${g.aR} : ${g.hR}</span>`;
+  }
+  const nowIdx = (g.status==='live') ? ((g.inning-1)*2 + (g.half==='말'?1:0)) : -1;
+  const ths = [1,2,3,4,5,6,7,8,9].map(i=>{
+    const cur = (g.status==='live' && g.inning===i);
+    return `<th class="${cur?'now':''}">${i}</th>`;
+  }).join('');
+  return `<div class="boardCard">
+    <div class="boardTop">
+      <div class="statline">${g.away.city} vs ${g.home.city}</div>
+      <div>${chip} ${title}</div>
+    </div>
+    <div class="boardScroll"><table class="board">
+      <tr><th style="text-align:left">팀</th>${ths}<th>R</th><th>H</th></tr>
+      ${boardRow(g.away.name, g.away.color, g.aw, pre?'-':g.aR, pre?'-':g.aH, nowIdx, false)}
+      ${boardRow(g.home.name, g.home.color, g.hm, pre?'-':g.hR, pre?'-':g.hH, nowIdx, true)}
+    </table></div>
+  </div>`;
+}
+
+/* ---- KBO 탭: 우리 서버에서 오늘 경기 받아오기 ---- */
+const KBO_API = DEFAULT_PVP_SERVER.replace(/^wss:/,'https:').replace(/^ws:/,'http:') + '/kbo';
+const kboBox = { status:'idle', games:[], error:'', fetchedAt:0 };
+function loadKbo(force){
+  if(kboBox.status==='loading') return;
+  if(!force && kboBox.status==='ok' && Date.now()-kboBox.fetchedAt < 60000) return;
+  kboBox.status = 'loading'; render();
+  fetch(KBO_API)
+    .then(res=>{
+      if(res.status===404) throw new Error('NOT_READY');
+      if(!res.ok) throw new Error('서버 응답 '+res.status);
+      return res.json();
+    })
+    .then(data=>{
+      kboBox.games = Array.isArray(data.games) ? data.games : [];
+      kboBox.status = 'ok'; kboBox.fetchedAt = Date.now(); kboBox.error = '';
+      render();
+    })
+    .catch(e=>{ kboBox.status='fail'; kboBox.error = e && e.message ? e.message : '알 수 없는 오류'; render(); });
+}
+function kboPanel(){
+  if(kboBox.status==='idle' || kboBox.status==='loading'){
+    return `<div class="card"><div class="statline">불러오는 중…</div></div>`;
+  }
+  if(kboBox.status==='fail'){
+    const msg = (kboBox.error==='NOT_READY')
+      ? '🛠 프로야구 점수는 아직 준비 중이에요.<br>서버에 연결하는 부분을 만드는 중입니다.'
+      : `⚠️ 프로야구 점수를 가져오지 못했어요.<br>(${kboBox.error})`;
+    return `<div class="card">
+      <div class="statline">${msg}</div>
+      <button class="btn small secondary" style="margin-top:8px" onclick="loadKbo(true)">다시 시도</button>
+    </div>`;
+  }
+  if(!kboBox.games.length){
+    return `<div class="card"><div class="statline">오늘은 예정된 경기가 없어요.</div>
+      <button class="btn small secondary" style="margin-top:8px" onclick="loadKbo(true)">새로고침</button></div>`;
+  }
+  const rows = kboBox.games.map(gm=>{
+    const st = gm.status==='live' ? `<span class="stateChip chipLive"><span class="liveDot"></span>${gm.note||'진행 중'}</span>`
+             : gm.status==='end'  ? `<span class="stateChip chipEnd">종료</span>`
+             :                      `<span class="stateChip chipSoon">${gm.note||'경기 전'}</span>`;
+    const sc = (gm.awayScore===null||gm.awayScore===undefined) ? '-' : `${gm.awayScore} : ${gm.homeScore}`;
+    return `<div class="boardCard">
+      <div class="boardTop">
+        <div class="statline">${gm.stadium||''}</div><div>${st}</div>
+      </div>
+      <div class="row"><b>${gm.away}</b><span class="bigScore">${sc}</span><b>${gm.home}</b></div>
+    </div>`;
+  }).join('');
+  return rows + `<button class="btn small secondary" onclick="loadKbo(true)">새로고침</button>
+    <div class="statline" style="margin-top:6px">점수 출처: 공개된 경기 결과. 구단 로고·선수 데이터는 쓰지 않습니다.</div>`;
+}
+
+function screenLiveNow(){
+  const tab = state.liveTab || 'ours';
+  const body = (tab==='ours')
+    ? todayFixtures().map(fx=>gameBoard(computeGame(fx))).join('')
+    : kboPanel();
+  const sub = (tab==='ours') ? '우리 10팀이 지금 경기 중' : '오늘의 프로야구';
+  return `${nav('실시간', sub)}<div class="screen">
+    <div class="tabBar">
+      <button class="tabBtn ${tab==='ours'?'active':''}" onclick="setLiveTab('ours')">우리 리그</button>
+      <button class="tabBtn ${tab==='kbo'?'active':''}" onclick="setLiveTab('kbo')">KBO</button>
+    </div>
+    ${body}
+  </div>`;
+}
+function setLiveTab(t){
+  state.liveTab = t;
+  if(t==='kbo') loadKbo(false); else render();
+}
+/* 화면을 보고 있는 동안 10초마다 점수를 새로 그린다 */
+let liveNowTimer = null;
+function liveNowTick(on){
+  if(on && !liveNowTimer){ liveNowTimer = setInterval(()=>{ if(state.screen==='livenow') render(); }, 10000); }
+  if(!on && liveNowTimer){ clearInterval(liveNowTimer); liveNowTimer = null; }
+}
+
 function render(){
   let html = '';
   switch(state.screen){
@@ -2821,11 +3061,13 @@ function render(){
     case 'pvprank': html = screenPvpRank(); break;
     case 'stats': html = screenStats(); break;
     case 'matchresult': html = screenMatchResult(); break;
+    case 'livenow': html = screenLiveNow(); break;
     default: html = screenTeamSelect();
   }
   html += renderModal();
   document.getElementById('app').innerHTML = html;
   showLive3D(state.screen === 'livegame' || state.screen === 'pvpmatch');
+  liveNowTick(state.screen === 'livenow');
   saveGameSoon();
 }
 
