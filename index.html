@@ -64,7 +64,25 @@
 <div id="app"></div>
 <div id="live3dHolder"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* 3D 그림 라이브러리(three.js)를 받아오는 곳.
+   한 곳이 막히거나 느리면 다음 곳에서 다시 받아본다. */
+var THREE_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
+  'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js',
+  'https://unpkg.com/three@0.128.0/build/three.min.js'
+];
+function loadThreeFallback(i){
+  if(typeof THREE !== 'undefined') return;
+  if(i >= THREE_URLS.length){ console.warn('[3D] three.js를 끝내 불러오지 못했습니다.'); return; }
+  var s = document.createElement('script');
+  s.src = THREE_URLS[i];
+  s.onload  = function(){ if(window.live3D) live3D.failed = false; };
+  s.onerror = function(){ loadThreeFallback(i+1); };
+  document.head.appendChild(s);
+}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="loadThreeFallback(1)"></script>
 <script>
 /* ================= DATA ================= */
 /* 창작 팀 10개.
@@ -994,7 +1012,7 @@ function playMatch(oppTeamId, isLeague){
 /* ================= 3D LIVE FIELD (Three.js) ================= */
 const live3D = { ready:false, animating:false };
 function initLive3D(){
-  if(live3D.ready || live3D.failed) return;
+  if(live3D.ready) return;
   /* 3D 그림 라이브러리를 인터넷에서 못 불러온 경우(느린 와이파이, 차단된 망 등)
      3D 화면만 포기하고 경기는 그대로 할 수 있게 한다. */
   if(typeof THREE === 'undefined'){
@@ -1002,6 +1020,8 @@ function initLive3D(){
     console.warn('[3D] three.js를 불러오지 못해 3D 화면 없이 진행합니다.');
     return;
   }
+  /* 라이브러리가 늦게 도착했으면 다시 만들어 본다 */
+  live3D.failed = false;
   try{ initLive3DInner(); }
   catch(e){
     live3D.failed = true;
