@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>야구선수훈련게임</title>
+<title>Korea Baseball Manager</title>
 <style>
   :root{ --team:#c30452; --team2:#111; }
   *{box-sizing:border-box;}
@@ -11,6 +11,8 @@
   #app{max-width:520px;margin:0 auto;min-height:100vh;position:relative;padding-bottom:20px;}
   .topbar{position:sticky;top:0;z-index:5;background:linear-gradient(135deg,var(--team),#0b0e14 130%);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 3px 10px rgba(0,0,0,0.35);}
   .topbar h2{margin:0;font-size:17px;}
+  /* 게임 이름이 좁은 화면에서 잘리지 않도록 화면 너비에 맞춰 크기를 줄인다 */
+  .gameTitle{text-align:center;font-size:clamp(17px,6.2vw,24px);white-space:nowrap;letter-spacing:-0.3px;}
   .topbar .sub{font-size:11px;opacity:0.85;}
   .backBtn{background:rgba(255,255,255,0.15);border:none;color:#fff;padding:7px 12px;border-radius:8px;font-size:13px;}
   .screen{padding:14px 14px 90px;}
@@ -1886,7 +1888,7 @@ function goHome(){
 function screenLogin(){
   return `
   <div class="screen" style="text-align:center;margin-top:70px;">
-    <h2>⚾ 야구선수훈련게임</h2>
+    <h2 class="gameTitle">⚾ Korea Baseball Manager</h2>
     <p style="color:#9aa4b2;font-size:13px;">닉네임을 입력하고 로그인하세요</p>
     <input id="loginInput" placeholder="닉네임 입력" maxlength="10"
       style="width:100%;padding:13px;border-radius:10px;border:1px solid #2a3242;background:#151a24;color:#fff;font-size:14px;margin:16px 0;text-align:center;">
@@ -1897,7 +1899,7 @@ function screenLogin(){
 function screenTeamSelect(){
   return `
   <div class="screen">
-    <h2 style="text-align:center;margin-top:22px;">⚾ 야구선수훈련게임</h2>
+    <h2 class="gameTitle" style="margin-top:22px;">⚾ Korea Baseball Manager</h2>
     <p style="text-align:center;color:#9aa4b2;font-size:13px;">응원할 팀을 선택하세요. 팀 로스터가 자동으로 생성됩니다.</p>
     <div class="grid2" style="margin-top:16px;">
       ${LEAGUE_TEAMS.map(t=>`

@@ -1,6 +1,6 @@
 # 실시간 대결 서버 (Cloudflare Workers)
 
-야구선수훈련게임의 실시간 대결·랭킹을 담당하는 서버입니다.
+Korea Baseball Manager의 실시간 대결·랭킹을 담당하는 서버입니다.
 
 ## 왜 Cloudflare인가
 

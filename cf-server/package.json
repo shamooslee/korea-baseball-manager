@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "야구선수훈련게임 실시간 대결 서버 (Cloudflare Workers)",
+  "description": "Korea Baseball Manager 실시간 대결 서버 (Cloudflare Workers)",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"

@@ -1,5 +1,5 @@
 /**
- * 야구선수훈련게임 - 실시간 PvP 서버
+ * Korea Baseball Manager - 실시간 PvP 서버
  * ------------------------------------------------
  * 설치:   npm install ws
  * 실행:   node server.js

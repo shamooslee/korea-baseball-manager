@@ -69,7 +69,7 @@ const GAME = 'file://' + path.join(__dirname, 'index.html');
 
   await step('게임이 열리는가', async () => {
     const title = await page.title();
-    if (title !== '야구선수훈련게임') throw new Error('제목이 다름: ' + title);
+    if (title !== 'Korea Baseball Manager') throw new Error('제목이 다름: ' + title);
     if (await screen() !== 'login') throw new Error('로그인 화면이 아님: ' + await screen());
   });
 

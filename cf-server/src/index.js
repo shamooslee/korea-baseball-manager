@@ -1,5 +1,5 @@
 /**
- * 야구선수훈련게임 - 실시간 대결 서버 (Cloudflare Workers + Durable Objects)
+ * Korea Baseball Manager - 실시간 대결 서버 (Cloudflare Workers + Durable Objects)
  *
  * 왜 Durable Object를 쓰나:
  *   보통의 Workers는 요청마다 따로 실행돼서 "지금 누가 기다리고 있는지"를 기억하지 못한다.
@@ -23,7 +23,7 @@ export default {
 
     /* 서버가 살아있는지 확인하는 주소 */
     if (url.pathname === '/health') {
-      return new Response(JSON.stringify({ ok: true, service: '야구선수훈련게임 대결서버' }), {
+      return new Response(JSON.stringify({ ok: true, service: 'Korea Baseball Manager 대결서버' }), {
         headers: { 'content-type': 'application/json; charset=utf-8' }
       });
     }
@@ -41,7 +41,7 @@ export default {
     }
 
     return new Response(
-      '야구선수훈련게임 실시간 대결 서버입니다.\n게임에서 이 주소로 접속하세요.\n랭킹 보기: /ranking',
+      'Korea Baseball Manager 실시간 대결 서버입니다.\n게임에서 이 주소로 접속하세요.\n랭킹 보기: /ranking',
       { headers: { 'content-type': 'text/plain; charset=utf-8' } }
     );
   }
