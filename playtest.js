@@ -275,7 +275,8 @@ const GAME = 'file://' + path.join(__dirname, 'index.html');
   await step('공 던지기 (카운트가 쌓이는가)', async () => {
     const before = await peek(() => ({ ...state.live.count, idx: state.live.oppIdx }));
     await page.evaluate(() => liveThrowPitch('fastball', 0.2, 0, 0));
-    await page.waitForTimeout(1500);
+    /* 인플레이 타구는 수비수가 쫓아가는 연출까지 있어서 2초 가까이 걸린다 */
+    await page.waitForTimeout(2600);
     const after = await peek(() => state.live ? ({ ...state.live.count, idx: state.live.oppIdx }) : null);
     if (!after) throw new Error('경기가 사라짐');
     const changed = after.b !== before.b || after.s !== before.s || after.idx !== before.idx;

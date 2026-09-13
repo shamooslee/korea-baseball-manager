@@ -59,7 +59,7 @@
   #live3dHolder{position:fixed;top:70px;left:50%;transform:translateX(-50%);width:100%;max-width:520px;height:210px;z-index:4;display:none;background:linear-gradient(#7fc4ea,#bfe4f5);border-bottom:2px solid #232a38;overflow:hidden;}
   #live3dHolder canvas{display:block;width:100%;height:100%;}
   .live3dSpacer{height:214px;}
-  .liveTag{position:absolute;top:6px;left:10px;background:rgba(0,0,0,0.45);color:#fff;font-size:10px;padding:3px 8px;border-radius:6px;z-index:5;}
+  .liveTag{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.62);color:#fff;font-size:15px;font-weight:900;padding:6px 14px;border-radius:999px;z-index:6;white-space:nowrap;pointer-events:none;}
 
   /* ===== 실시간 화면 ===== */
   .tabBar{display:flex;gap:8px;margin-bottom:10px;}
@@ -664,7 +664,9 @@ function recordBatting(player, res, rbi){
   if(!isMine(p)) return;
   ensureStat(p);
   const s = p.stat;
+  /* 볼넷·데드볼은 '타수'로 세지 않는다 (타율 계산에서 빠진다) */
   if(res==='BB'){ s.bb++; }
+  else if(res==='HBP'){ s.hbp = (s.hbp||0) + 1; }
   else {
     s.ab++;
     if(res==='1B'||res==='2B'||res==='3B'||res==='HR') s.h++;
@@ -838,7 +840,10 @@ function resolveAtBat(res, batter, bases, tally, label, outsBeforePlay){
     if(res==='K'){
       log = `${label} ${batter.name} 삼진 아웃`;
     } else {
-      const desc = describeOut();
+      /* 3D로 보여준 타구가 있으면 그 문구를 그대로 쓴다 (그림과 글이 어긋나지 않게).
+         한 번 쓰고 나면 비워서 다음 타석에 잘못 쓰이지 않게 한다. */
+      const desc = (battedPlan && battedPlan.desc) ? battedPlan.desc : describeOut();
+      battedPlan = null;
       if(desc.includes('플라이') && b[2] && outsBeforePlay<2){
         runs++; b[2]=false;
         log = `${label} ${batter.name} ${desc} (희생플라이 득점)`;
@@ -846,12 +851,15 @@ function resolveAtBat(res, batter, bases, tally, label, outsBeforePlay){
         log = `${label} ${batter.name} ${desc}`;
       }
     }
-  } else if(res==='BB'){
+  } else if(res==='BB' || res==='HBP'){
+    /* 볼넷과 데드볼은 주자를 '밀어내기'로만 보낸다 (앞 베이스가 차 있을 때만 한 칸씩) */
     if(b[0]&&b[1]&&b[2]){ runs++; }
     else if(b[0]&&b[1]){ b[2]=true; }
     else if(b[0]){ b[1]=true; }
     b[0]=true;
-    log = `${label} ${batter.name} 볼넷 출루`;
+    log = (res==='HBP')
+      ? `${label} ${batter.name} 몸에 맞는 공! (데드볼) 1루 출루`
+      : `${label} ${batter.name} 볼넷 출루`;
   } else if(res==='1B'){
     hit=true; let sc=0;
     if(b[2]){sc++;b[2]=false;}
@@ -895,7 +903,15 @@ function resolvePitchChoice(batter, pitcher, mod){
    4볼이면 볼넷, 3스트라이크면 삼진. */
 function resolvePitch(batter, pitcher, pitchInfo, swing, timingQuality, swingType){
   const inZone = pitchInfo.zoneDist <= 0.5;
-  if(!swing) return { kind: inZone ? 'strike' : 'ball' };
+  if(!swing){
+    /* 존에서 아주 많이 벗어난 공은 가끔 타자 몸에 맞는다 = 데드볼.
+       제구(control)가 나쁜 투수일수록 더 자주 맞힌다. */
+    if(pitchInfo.zoneDist > 0.95){
+      const hbpP = clamp(0.025 + (60 - pitcher.control)/1200, 0.008, 0.06);
+      if(Math.random() < hbpP) return { kind:'hbp' };
+    }
+    return { kind: inZone ? 'strike' : 'ball' };
+  }
 
   const pm = applyPitchMod(pitcher, pitchLocationMod(pitchInfo.pitchType, pitchInfo.zoneDist));
   const q = (timingQuality===null || timingQuality===undefined)
@@ -935,7 +951,8 @@ function simAtBatWithCount(batter, pitcher){
     const info = aiPickPitchLocation();
     const swing = aiWillSwing(batter, info, s);
     const o = resolvePitch(batter, pitcher, info, swing, null, Math.random()<0.6?'contact':'power');
-    if(o.kind==='ball'){ b++; if(b>=4) return {res:'BB', b, s, pitches}; }
+    if(o.kind==='hbp'){ return {res:'HBP', b, s, pitches}; }
+    else if(o.kind==='ball'){ b++; if(b>=4) return {res:'BB', b, s, pitches}; }
     else if(o.kind==='strike' || o.kind==='swingmiss'){ s++; if(s>=3) return {res:'K', b, s, pitches}; }
     else if(o.kind==='foul'){ if(s<2) s++; }
     else return {res:o.res, b, s, pitches};
@@ -1035,6 +1052,125 @@ function playMatch(oppTeamId, isLeague){
 
 /* ================= 3D LIVE FIELD (Three.js) ================= */
 const live3D = { ready:false, animating:false };
+
+/* 수비수가 평소에 서 있는 자리. x는 좌우(+가 1루 쪽), z는 앞뒤(작을수록 멀리) */
+const FIELD_POS = [
+  {name:'1루수',  x: 7.0, z: -7,  of:false},
+  {name:'2루수',  x: 4.5, z:-14,  of:false},
+  {name:'유격수', x:-4.5, z:-14,  of:false},
+  {name:'3루수',  x:-7.0, z: -7,  of:false},
+  {name:'좌익수', x:-16,  z:-28,  of:true},
+  {name:'중견수', x:  0,  z:-32,  of:true},
+  {name:'우익수', x: 16,  z:-28,  of:true}
+];
+function nearestFielder(x, z, onlyOutfield){
+  let best = 0, bestD = Infinity;
+  FIELD_POS.forEach((f,i)=>{
+    if(onlyOutfield && !f.of) return;
+    const d = (f.x-x)*(f.x-x) + (f.z-z)*(f.z-z);
+    if(d < bestD){ bestD = d; best = i; }
+  });
+  return best;
+}
+/* 방금 친 타구가 어디로 갔는지 미리 정해둔다.
+   연출(수비수가 뛰는 그림)과 기록 문구가 서로 어긋나지 않게 하려고 한 곳에서 정한다. */
+let battedPlan = null;
+/* 안타 타구를 만들 때 쓰는 도우미.
+   공이 수비수 바로 앞에 떨어지면 "분명히 닿았는데 왜 안타지?" 하고 헷갈리므로,
+   가장 가까운 수비수한테서 최소 7만큼은 떨어진 곳에 떨어지게 밀어준다. */
+function hitPlan(type, x, z, onlyOutfield){
+  const MIN = 7;
+  let fi = nearestFielder(x, z, onlyOutfield);
+  let f = FIELD_POS[fi];
+  let dx = x - f.x, dz = z - f.z;
+  let d = Math.sqrt(dx*dx + dz*dz);
+  if(d < MIN){
+    if(d < 0.01){ dx = 1; dz = 0; d = 1; }          /* 정확히 겹치면 옆으로 민다 */
+    x = f.x + dx/d * MIN;
+    z = f.z + dz/d * MIN;
+    fi = nearestFielder(x, z, onlyOutfield);        /* 밀고 나서 다시 가장 가까운 수비수 */
+  }
+  return { type, fi, x, z, caught:false };
+}
+function makeBattedPlan(res){
+  const rnd = (a,b)=> a + Math.random()*(b-a);
+  if(res==='OUT'){
+    if(Math.random() < 0.5){                       /* 땅볼 — 내야수가 잡는다 */
+      const i = Math.floor(Math.random()*4);
+      const f = FIELD_POS[i];
+      return { type:'ground', fi:i, x:f.x+rnd(-1.2,1.2), z:f.z+rnd(-1,1),
+               caught:true, desc:`${f.name} 땅볼 아웃` };
+    }
+    const i = 4 + Math.floor(Math.random()*3);      /* 플라이 — 외야수가 잡는다 */
+    const f = FIELD_POS[i];
+    return { type:'fly', fi:i, x:f.x+rnd(-2,2), z:f.z+rnd(-2,2),
+             caught:true, desc:`${f.name} 플라이 아웃` };
+  }
+  if(res==='1B'){                                   /* 내야를 지나 앞에 뚝 떨어짐 */
+    const x = rnd(-13,13), z = rnd(-24,-18);
+    return hitPlan('ground', x, z, false);
+  }
+  if(res==='2B'){                                   /* 외야수 사이(갭)로 빠짐 */
+    const x = (Math.random()<0.5?-1:1) * rnd(7,15), z = rnd(-32,-26);
+    return hitPlan('line', x, z, true);
+  }
+  if(res==='3B'){                                   /* 구석 끝까지 굴러감 */
+    const x = (Math.random()<0.5?-1:1) * rnd(15,21), z = rnd(-35,-30);
+    return hitPlan('line', x, z, true);
+  }
+  if(res==='HR'){                                   /* 담장을 넘어감 */
+    const x = rnd(-18,18), z = -44;
+    return { type:'hr', fi:nearestFielder(x,-30,true), x, z, caught:false };
+  }
+  return null;                                      /* 볼넷·삼진·데드볼은 타구가 없다 */
+}
+/* 카메라 두 가지.
+   PITCH = 타자 뒤에서 보는 시점 (공을 칠 때 타이밍을 봐야 하므로 필요)
+   FIELD = 위에서 운동장 전체를 보는 시점 (타구를 따라가는 수비수를 보려면 필요) */
+const CAM_PITCH = { pos:[0, 2.3, 5.2], look:[0, 1.6, -12] };
+const CAM_FIELD = { pos:[0, 17, 12],   look:[0, 0, -22] };
+function setCam(t){
+  if(!live3D.ready) return;
+  const k = clamp(t, 0, 1);
+  const c = live3D.camera;
+  c.position.set(
+    CAM_PITCH.pos[0] + (CAM_FIELD.pos[0]-CAM_PITCH.pos[0])*k,
+    CAM_PITCH.pos[1] + (CAM_FIELD.pos[1]-CAM_PITCH.pos[1])*k,
+    CAM_PITCH.pos[2] + (CAM_FIELD.pos[2]-CAM_PITCH.pos[2])*k
+  );
+  c.lookAt(
+    CAM_PITCH.look[0] + (CAM_FIELD.look[0]-CAM_PITCH.look[0])*k,
+    CAM_PITCH.look[1] + (CAM_FIELD.look[1]-CAM_PITCH.look[1])*k,
+    CAM_PITCH.look[2] + (CAM_FIELD.look[2]-CAM_PITCH.look[2])*k
+  );
+}
+/* 수비수가 실제로 뛰어가서 멈추는 자리.
+   아웃이면 공 있는 곳까지 딱 가고,
+   안타면 반드시 '눈에 보일 만큼' 못 미치게 한다 (아슬아슬하게 닿으면 왜 안타인지 헷갈린다). */
+function fielderEndPoint(plan){
+  const home = FIELD_POS[plan.fi];
+  const dx = plan.x - home.x, dz = plan.z - home.z;
+  const len = Math.sqrt(dx*dx + dz*dz) || 1;
+  if(plan.caught) return { x:plan.x, z:plan.z, gap:0 };
+  const gap = (plan.type==='hr') ? Math.max(len*0.45, 6) : clamp(len*0.25, 3, 8);
+  const k = Math.max(0, (len - gap) / len);
+  return { x: home.x + dx*k, z: home.z + dz*k, gap: len - len*k };
+}
+function resetFielders(){
+  if(!live3D.ready || !live3D.fielders) return;
+  live3D.fielders.forEach(g=>{
+    g.position.set(g.userData.home.x, 0, g.userData.home.z);
+    g.userData.glove.position.set(-0.3, 1.0, 0.1);
+  });
+}
+function showTag(text, ms){
+  if(!live3D.ready || !live3D.tag) return;
+  const tag = live3D.tag;
+  tag.textContent = text;
+  tag.style.display = 'block';
+  clearTimeout(live3D.tagTimer);
+  live3D.tagTimer = setTimeout(()=>{ tag.style.display = 'none'; }, ms || 900);
+}
 function initLive3D(){
   if(live3D.ready) return;
   /* 3D 그림 라이브러리를 인터넷에서 못 불러온 경우(느린 와이파이, 차단된 망 등)
@@ -1057,10 +1193,10 @@ function initLive3DInner(){
   const holder = document.getElementById('live3dHolder');
   const w = holder.clientWidth || 380, h = holder.clientHeight || 210;
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0xbfe4f5, 22, 55);
-  const camera = new THREE.PerspectiveCamera(52, w/h, 0.1, 100);
-  camera.position.set(0, 2.3, 5.2);
-  camera.lookAt(0, 1.6, -12);
+  scene.fog = new THREE.Fog(0xbfe4f5, 55, 130);   /* 위에서 볼 때 운동장 끝까지 잘 보이도록 안개를 멀리 밀었다 */
+  const camera = new THREE.PerspectiveCamera(52, w/h, 0.1, 120);
+  camera.position.set(CAM_PITCH.pos[0], CAM_PITCH.pos[1], CAM_PITCH.pos[2]);
+  camera.lookAt(CAM_PITCH.look[0], CAM_PITCH.look[1], CAM_PITCH.look[2]);
   const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
   renderer.setSize(w,h);
@@ -1072,16 +1208,16 @@ function initLive3DInner(){
   sun.position.set(5,10,5); scene.add(sun);
 
   // ground / infield dirt / outfield grass
-  const grass = new THREE.Mesh(new THREE.PlaneGeometry(60,60), new THREE.MeshStandardMaterial({color:0x3f9142}));
+  const grass = new THREE.Mesh(new THREE.PlaneGeometry(140,140), new THREE.MeshStandardMaterial({color:0x3f9142}));
   grass.rotation.x=-Math.PI/2; grass.position.z=-14; scene.add(grass);
-  const dirt = new THREE.Mesh(new THREE.CircleGeometry(6,24), new THREE.MeshStandardMaterial({color:0xa9713f}));
-  dirt.rotation.x=-Math.PI/2; dirt.position.set(0,0.01,-1); scene.add(dirt);
+  const dirt = new THREE.Mesh(new THREE.CircleGeometry(13,28), new THREE.MeshStandardMaterial({color:0xa9713f}));
+  dirt.rotation.x=-Math.PI/2; dirt.position.set(0,0.01,-8); scene.add(dirt);   /* 내야 흙 — 내야수들이 이 위에 선다 */
   const mound = new THREE.Mesh(new THREE.CylinderGeometry(1.4,1.6,0.25,16), new THREE.MeshStandardMaterial({color:0x9c6a3c}));
   mound.position.set(0,0.12,-15); scene.add(mound);
   const plate = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.05,0.5), new THREE.MeshStandardMaterial({color:0xffffff}));
   plate.position.set(0,0.03,0); scene.add(plate);
-  const fence = new THREE.Mesh(new THREE.BoxGeometry(50,2.2,0.3), new THREE.MeshStandardMaterial({color:0x1c4d2e}));
-  fence.position.set(0,1.1,-38); scene.add(fence);
+  const fence = new THREE.Mesh(new THREE.BoxGeometry(80,2.6,0.4), new THREE.MeshStandardMaterial({color:0x18452a}));
+  fence.position.set(0,1.3,-40); scene.add(fence);
 
   // pitcher figure
   const pitcherMesh = new THREE.Group();
@@ -1104,12 +1240,36 @@ function initLive3DInner(){
   batterMesh.position.set(0.55,0,0.7);
   scene.add(batterMesh);
 
+  // 수비수 7명 (내야 4명 + 외야 3명)
+  const fielders = FIELD_POS.map(fp=>{
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.26,0.3,1.0,8),
+                                new THREE.MeshStandardMaterial({color:0xdfe4ec}));
+    body.position.y = 0.72; g.add(body);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.21,8,8),
+                                new THREE.MeshStandardMaterial({color:0xffcf9e}));
+    head.position.y = 1.35; g.add(head);
+    const glove = new THREE.Mesh(new THREE.SphereGeometry(0.16,8,8),
+                                 new THREE.MeshStandardMaterial({color:0x7a4a22}));
+    glove.position.set(-0.3, 1.0, 0.1); g.add(glove);
+    g.position.set(fp.x, 0, fp.z);
+    g.userData = { home:{x:fp.x, z:fp.z}, glove };
+    scene.add(g);
+    return g;
+  });
+
   // ball
   const ball = new THREE.Mesh(new THREE.SphereGeometry(0.09,10,10), new THREE.MeshStandardMaterial({color:0xffffff}));
   scene.add(ball);
 
+  // 화면 위에 '잡았다 / 빠졌다' 같은 짧은 글자를 띄울 자리
+  const tag = document.createElement('div');
+  tag.className = 'liveTag'; tag.style.display = 'none';
+  holder.appendChild(tag);
+
   live3D.scene=scene; live3D.camera=camera; live3D.renderer=renderer;
   live3D.ball=ball; live3D.bat=bat; live3D.batterMesh=batterMesh; live3D.pitcherMesh=pitcherMesh;
+  live3D.fielders=fielders; live3D.tag=tag;
   live3D.ready = true;
   resetBallAtMound();
   renderer.render(scene,camera);
@@ -1117,7 +1277,11 @@ function initLive3DInner(){
 function resetBallAtMound(){
   if(!live3D.ready) return;
   live3D.ball.position.set(0,1.55,-15);
+  live3D.ball.visible = true;
+  live3D.ball.scale.setScalar(1);
   live3D.bat.rotation.z = Math.PI/2.6;
+  resetFielders();
+  setCam(0);                        /* 카메라를 다시 타자 시점으로 */
   live3D.renderer.render(live3D.scene, live3D.camera);
 }
 /* 3D 화면이 있을 때만 그만큼 자리를 비워둔다.
@@ -1182,28 +1346,69 @@ function animatePitchFlight(info, onArrive){
     ball.position.z = -15 + 15*t;
   }, onArrive);
 }
+/* 친 공이 날아가고, 가장 가까운 수비수가 그 공을 따라 뛰어간다.
+   아웃이면 잡고, 안타면 한 발 늦어서 놓친다. 홈런이면 담장 앞에서 멈춰 선다. */
 function animateContactOutcome(res, onDone){
   if(!live3D.ready){ live3D.animating = false; if(onDone) onDone(); return; }
-  const swings = res!=='BB';
   const bat = live3D.bat, ball = live3D.ball;
-  if(swings){ bat.rotation.z = -0.6; }
+  if(res !== 'BB' && res !== 'HBP'){ bat.rotation.z = -0.6; }
+  const plan = battedPlan;
+
   setTimeout(()=>{
     bat.rotation.z = Math.PI/2.6;
-    const dist = outcomeFlightDistance(res);
-    if(dist>0){
-      const sideDrift = (Math.random()-0.5)*6;
-      const arc = 2 + dist*0.09;
-      tween((res==='HR'?900:600) * speedFactor(), (t2)=>{
-        ball.position.x = sideDrift*t2;
-        ball.position.z = 0 - dist*t2;
-        ball.position.y = 0.3 + Math.sin(t2*Math.PI)*arc;
-      }, ()=>{ ball.visible=false; setTimeout(()=>{ ball.visible=true; live3D.animating=false; onDone(); }, 200); });
-    } else {
+    if(!plan){
+      if(res==='HBP') showTag('😣 몸에 맞는 공!');
       setTimeout(()=>{ live3D.animating=false; onDone(); }, 250);
+      return;
     }
+
+    const fielder = live3D.fielders[plan.fi];
+    const home = fielder.userData.home;
+    const end = fielderEndPoint(plan);
+    const endX = end.x, endZ = end.z;
+
+    const flat = (plan.type === 'ground');
+    const far  = Math.sqrt(plan.x*plan.x + plan.z*plan.z);
+    const arc  = flat ? 0.55 : (1.8 + far*0.07);
+    const dur  = (plan.type==='hr' ? 850 : flat ? 560 : 680) * speedFactor();
+    ball.scale.setScalar(2.4);        /* 위에서 보면 공이 너무 작으니 크게 키운다 */
+
+    tween(dur, (t)=>{
+      ball.position.x = plan.x * t;
+      ball.position.z = plan.z * t;
+      ball.position.y = flat
+        ? 0.25 + Math.abs(Math.sin(t*Math.PI*2.2)) * 0.5 * (1-t)   /* 땅볼은 통통 튄다 */
+        : 0.35 + Math.sin(t*Math.PI) * arc;
+      /* 수비수는 공보다 조금 늦게 반응해서 뛴다 */
+      const ft = clamp((t - 0.12) / 0.88, 0, 1);
+      const ease = ft*ft*(3-2*ft);
+      fielder.position.x = home.x + (endX - home.x) * ease;
+      fielder.position.z = home.z + (endZ - home.z) * ease;
+      fielder.userData.glove.position.y = 1.0 + (flat ? -0.55 : 0.45) * ease;
+      /* 타구가 시작되면 카메라가 위로 올라가 운동장 전체를 비춘다 */
+      setCam(t / 0.25);
+    }, ()=>{
+      if(plan.caught){
+        showTag('🧤 잡았다!');
+        ball.visible = false;
+      } else if(plan.type === 'hr'){
+        showTag('💥 담장을 넘어갔다!', 1100);
+      } else {
+        showTag('😮 빠졌다! 안타!');
+      }
+      setTimeout(()=>{
+        ball.visible = true;
+        resetFielders();
+        live3D.animating = false;
+        onDone();
+      }, 300 * speedFactor());
+    });
   }, 90);
 }
 function playAtBatAnimation(res, info, onDone){
+  /* 타구가 어디로 갈지 여기서 한 번만 정한다.
+     그래야 3D 그림과 기록 문구(예: '중견수 플라이 아웃')가 똑같아진다. */
+  battedPlan = makeBattedPlan(res);
   if(!live3D.ready){ onDone(); return; }
   animatePitchFlight(info, ()=>{ animateContactOutcome(res, onDone); });
 }
@@ -1393,6 +1598,7 @@ function applyPitchCount(o, batter, label, tally, side){
   else if(o.kind === 'strike'){ c.s++; msg = `스트라이크 (안 휘두름)`; }
   else if(o.kind === 'swingmiss'){ c.s++; msg = `헛스윙`; }
   else if(o.kind === 'foul'){ if(c.s < 2) c.s++; msg = `파울`; }
+  else if(o.kind === 'hbp'){ showTag('😣 몸에 맞는 공!'); finishLiveAtBat('HBP', batter, label, tally, side); return; }
   L.log.unshift(`${label} ${batter.name} — ${msg} <b>${c.b}-${c.s}</b>`);
 
   if(c.b >= 4){ finishLiveAtBat('BB', batter, label, tally, side); return; }
@@ -1456,6 +1662,7 @@ function finalizeBattingSwing(){
   const o = resolvePitch(batter, L.oppPitcher, info, swing, timingQuality, L.swingType);
   if(o.kind === 'inplay'){
     live3D.animating = true;
+    battedPlan = makeBattedPlan(o.res);      /* 타구가 어디로 갈지 먼저 정한다 */
     animateContactOutcome(o.res, ()=>{
       finishLiveAtBat(o.res, batter, state.team.name, L.tally, 'user');
     });
@@ -1707,7 +1914,11 @@ function handlePvpMessage(msg){
     P.hitsHome=msg.hitsHome; P.hitsAway=msg.hitsAway;
     P.log.unshift(msg.log); P.myTurn=null; P.battingPhase='idle'; P.pendingPitchInfo=null;
     render();
-    animateContactOutcome(msg.res, ()=>{});
+    /* 실시간 대결은 결과와 기록 문구를 서버가 정해서 보내준다.
+       그래서 그림만 그 결과에 맞춰 만들고, 끝나면 계획을 비운다
+       (안 비우면 다음 혼자 하는 경기의 기록 문구에 잘못 섞일 수 있다). */
+    battedPlan = makeBattedPlan(msg.res);
+    animateContactOutcome(msg.res, ()=>{ battedPlan = null; });
   }
   else if(msg.type==='game_over'){
     P.status='ended'; P.finalResult=msg;
