@@ -51,7 +51,7 @@
   .scheduleItem{display:flex;justify-content:space-between;align-items:center;background:#0f131b;border:1px solid #232a38;border-radius:10px;padding:10px 12px;margin-bottom:7px;}
   .pitchBox{position:relative;width:180px;height:180px;margin:10px auto;background:#0c3d1e;border:2px solid #2a3242;border-radius:12px;touch-action:none;overflow:hidden;}
   .pitchZoneRect{position:absolute;left:32px;top:26px;width:116px;height:128px;border:2px dashed #ffd54a;border-radius:4px;pointer-events:none;}
-  .pitchReticle{position:absolute;width:24px;height:24px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#ff6b3d);box-shadow:0 0 10px rgba(255,107,61,0.8);pointer-events:none;}
+  .pitchReticle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#ff6b3d);box-shadow:0 0 10px rgba(255,107,61,0.8);pointer-events:none;}
   .typeToggle{display:flex;gap:8px;justify-content:center;margin-bottom:4px;}
   .typeBtn{flex:1;max-width:140px;padding:9px;border-radius:10px;border:1px solid #2a3242;background:#151a24;color:#9aa4b2;font-size:13px;font-weight:700;}
   .typeBtn.active{background:linear-gradient(135deg,var(--team),#8a0338);color:#fff;border-color:transparent;}
@@ -82,6 +82,25 @@
   table.board th.now{color:#ff7a7a;}
   table.board td.now{background:rgba(255,77,77,0.10);}
   .bigScore{font-size:15px;font-weight:900;color:#fff;}
+
+  /* ===== 실시간 대결 — 지금 누구 차례인지 크게 알려주는 띠 ===== */
+  .turnBar{margin:0 0 10px;padding:12px;border-radius:12px;text-align:center;font-size:15px;font-weight:900;}
+  .turnMine{background:linear-gradient(135deg,#e0245e,#8a0338);color:#fff;animation:turnPulse 1.4s infinite;}
+  .turnWait{background:#151a24;border:1px solid #2a3242;color:#9aa4b2;font-size:13px;font-weight:700;}
+  .turnHint{display:block;margin-top:4px;font-size:12px;font-weight:600;opacity:0.9;}
+  @keyframes turnPulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(224,36,94,0.55);}
+    70%{box-shadow:0 0 0 12px rgba(224,36,94,0);}
+  }
+  /* 화면이 짧은 폰에서는 3D 칸을 줄여, 투구·스윙 버튼이 스크롤 없이 보이게 한다 */
+  @media (max-height:700px){
+    #live3dHolder{height:150px;}
+    .live3dSpacer{height:154px;}
+    .turnBar{padding:8px;font-size:14px;}
+    .pitchBox{width:132px;height:132px;}
+    .pitchZoneRect{left:23px;top:19px;width:86px;height:94px;}
+    .swingBigBtn{padding:16px;font-size:18px;}
+  }
 </style>
 </head>
 <body>
@@ -1549,7 +1568,11 @@ function pitchDragUpdate(e){
   const ctx = state.screen === 'pvpmatch' ? state.pvp : state.live;
   if(ctx){ ctx.pitchAim.x = x; ctx.pitchAim.y = y; ctx.pitchAim._maxR = maxR; }
   const reticle = document.getElementById('pitchReticle');
-  if(reticle){ reticle.style.left = (pos.half + x - 12) + 'px'; reticle.style.top = (pos.half + y - 12) + 'px'; }
+  if(reticle){
+    reticle.style.transform = 'none';      /* 기본 가운데 정렬을 끄고 손가락 위치를 그대로 쓴다 */
+    reticle.style.left = (pos.half + x - 12) + 'px';
+    reticle.style.top  = (pos.half + y - 12) + 'px';
+  }
 }
 function pitchDragEnd(e){
   if(!pitchDragState.active) return;
@@ -2443,7 +2466,7 @@ function screenLiveGame(){
       </div>
       <div class="pitchBox" id="pitchBox" onmousedown="pitchDragStart(event,'pitchBox')" ontouchstart="pitchDragStart(event,'pitchBox')">
         <div class="pitchZoneRect"></div>
-        <div class="pitchReticle" id="pitchReticle" style="left:78px;top:78px;"></div>
+        <div class="pitchReticle" id="pitchReticle"></div>
       </div>
       <div class="statline" style="text-align:center;">코스를 드래그해서 조준하고 손을 떼면 던져요<br>노란 네모 <b>안</b>이면 스트라이크존 · <b>밖</b>이면 볼이 될 수 있어요</div>`;
   } else if(L.battingPhase==='pitching'){
@@ -2846,32 +2869,36 @@ function screenPvpMatch(){
   let controls;
   if(P.myTurn==='pitch'){
     controls = `
-      <div class="statline" style="text-align:center;margin-bottom:6px;">투구 선택 · 상대 타자 ${P.batterName||''}</div>
+      <div class="turnBar turnMine">⚾ 내 차례! 공을 던지세요
+        <span class="turnHint">초록 칸을 끌어서 겨냥하고 떼세요</span></div>
+      <div class="statline" style="text-align:center;margin-bottom:6px;">상대 타자 ${P.batterName||''}</div>
       <div class="typeToggle">
         <button class="typeBtn ${P.pitchAim.type==='fastball'?'active':''}" onclick="setPitchType('fastball')">🔥 직구</button>
         <button class="typeBtn ${P.pitchAim.type==='breaking'?'active':''}" onclick="setPitchType('breaking')">🌀 변화구</button>
       </div>
+      <div class="statline" style="text-align:center;margin-bottom:4px;">노란 네모 <b>안</b>이면 스트라이크존 · <b>밖</b>이면 볼</div>
       <div class="pitchBox" id="pitchBox" onmousedown="pitchDragStart(event,'pitchBox')" ontouchstart="pitchDragStart(event,'pitchBox')">
         <div class="pitchZoneRect"></div>
-        <div class="pitchReticle" id="pitchReticle" style="left:78px;top:78px;"></div>
-      </div>
-      <div class="statline" style="text-align:center;">코스를 드래그해서 조준하고 손을 떼면 던져요<br>노란 네모 <b>안</b>이면 스트라이크존 · <b>밖</b>이면 볼이 될 수 있어요</div>`;
+        <div class="pitchReticle" id="pitchReticle"></div>
+      </div>`;
   } else if(P.myTurn==='swing' && P.battingPhase==='pitching'){
     controls = `
       <div style="text-align:center;">
-        <div class="statline" style="margin-bottom:10px;">⚾ 공이 날아오고 있어요! 타이밍에 맞춰 스윙!</div>
+        <div class="turnBar turnMine">⚾ 공이 날아오고 있어요! 지금 스윙!</div>
         <button class="swingBigBtn" onclick="pvpSwingTap()">SWING</button>
       </div>`;
   } else if(P.myTurn==='swing'){
     controls = `
-      <div class="statline" style="text-align:center;margin-bottom:6px;">스윙 방식 선택 · 타자 ${P.batterName||''}</div>
+      <div class="turnBar turnMine">🏏 내 차례! 타석에 들어갑니다
+        <span class="turnHint">스윙 방식을 고르고 기다리면 공이 날아와요</span></div>
+      <div class="statline" style="text-align:center;margin-bottom:6px;">타자 ${P.batterName||''}</div>
       <div class="typeToggle">
         <button class="typeBtn ${P.swingType==='contact'?'active':''}" onclick="setPvpSwingType('contact')">🎯 정교한 컨택</button>
         <button class="typeBtn ${P.swingType==='power'?'active':''}" onclick="setPvpSwingType('power')">💥 강한 스윙</button>
       </div>
-      <div class="statline" style="text-align:center;">상대가 투구를 준비하는 중입니다...</div>`;
+      <div class="turnBar turnWait" style="margin:10px 0 0;">⏳ 상대가 공을 던지기를 기다리는 중…</div>`;
   } else {
-    controls = `<div class="card" style="text-align:center;color:#9aa4b2;">상대방의 선택을 기다리는 중...</div>`;
+    controls = `<div class="turnBar turnWait" style="margin:0;">⏳ 상대 차례예요. 잠시만 기다려 주세요…</div>`;
   }
   return `${nav('실시간 대결 · vs ' + (P.opponentName||''), `${P.inning}회 ${P.half==='top'?'초':'말'}`)}
   <div class="screen">
