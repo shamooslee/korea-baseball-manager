@@ -1320,13 +1320,29 @@ function showLive3D(show){
 }
 function tween(duration, onFrame, onDone){
   const start = performance.now();
+  let finished = false;
+  function finish(){
+    if(finished) return;
+    finished = true;
+    if(onDone) onDone();
+  }
   function step(now){
+    if(finished) return;
     const t = Math.min(1, (now-start)/duration);
     onFrame(t);
     if(live3D.ready) live3D.renderer.render(live3D.scene, live3D.camera);
-    if(t<1) requestAnimationFrame(step); else if(onDone) onDone();
+    if(t<1) requestAnimationFrame(step); else finish();
   }
   requestAnimationFrame(step);
+  /* 안전장치.
+     폰 화면이 꺼지거나 다른 앱으로 넘어가면 브라우저가 그림 그리기(requestAnimationFrame)를
+     아예 멈춰버린다. 그러면 연출이 영영 안 끝나서 경기가 멈춘다.
+     그래서 시간이 충분히 지나면 연출이 끝난 것으로 치고 다음으로 넘어간다. */
+  setTimeout(()=>{
+    if(finished) return;
+    try{ onFrame(1); }catch(e){}
+    finish();
+  }, duration + 1200);
 }
 function outcomeFlightDistance(res){
   if(res==='1B') return 9;
@@ -1594,6 +1610,16 @@ function setPitchType(t){
   ctx.pitchAim.type = t;
   render();
 }
+/* 세 번째 안전장치.
+   폰 화면을 다시 켜거나 앱으로 돌아왔을 때, 멈춰 있던 연출을 즉시 정리한다. */
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState !== 'visible') return;
+  live3D.animating = false;
+  const P = state.pvp;
+  if(P && P.battingPhase === 'pitching') pvpFinalizeSwing();
+  if(state.screen === 'livegame' || state.screen === 'pvpmatch') render();
+});
+
 document.addEventListener('mousemove', (e)=>{ if(pitchDragState.active) pitchDragUpdate(e); });
 document.addEventListener('mouseup', (e)=>{ if(pitchDragState.active) pitchDragEnd(e); });
 document.addEventListener('touchmove', (e)=>{ if(pitchDragState.active) pitchDragUpdate(e); }, {passive:false});
@@ -1924,6 +1950,11 @@ function handlePvpMessage(msg){
     if(P.myTurn==='swing'){
       P.battingPhase='pitching'; P.tapTs=null; P.pitchStartTs=performance.now();
       render();
+      /* 두 번째 안전장치.
+         연출이 어떤 이유로든 안 끝나도, 3초 뒤에는 무조건 스윙 결과를 보낸다.
+         안 그러면 상대편은 "상대 차례예요"만 보면서 영원히 기다리게 된다. */
+      clearTimeout(P.swingWatchdog);
+      P.swingWatchdog = setTimeout(()=>{ pvpFinalizeSwing(); }, 3000);
       animatePitchFlight({pitchType:msg.pitchType, dx:msg.dx, dy:msg.dy}, ()=>{
         setTimeout(()=>{ pvpFinalizeSwing(); }, 160);
       });
@@ -1972,7 +2003,10 @@ function pvpSwingTap(){
   if(P.tapTs===null){ P.tapTs = performance.now(); if(live3D.ready) live3D.bat.rotation.z = -0.6; }
 }
 function pvpFinalizeSwing(){
-  const P = state.pvp; if(P.battingPhase!=='pitching') return;
+  const P = state.pvp;
+  clearTimeout(P.swingWatchdog); P.swingWatchdog = null;
+  if(P.battingPhase!=='pitching') return;
+  if(!P.ws || P.ws.readyState !== 1){ P.battingPhase = 'idle'; render(); return; }
   P.battingPhase = 'idle';
   let timingQuality = null;
   if(P.tapTs!==null){
