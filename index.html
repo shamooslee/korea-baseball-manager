@@ -92,8 +92,49 @@
     0%,100%{box-shadow:0 0 0 0 rgba(224,36,94,0.55);}
     70%{box-shadow:0 0 0 12px rgba(224,36,94,0);}
   }
+  /* 폰을 눕혔을 때(가로모드): 위아래가 너무 좁아 3D를 위에 두면 버튼이 화면 밖으로 밀린다.
+     그래서 3D를 왼쪽 절반으로 옮기고, 점수·버튼은 오른쪽에 둔다.
+     (body.with3d 는 3D 화면을 실제로 보여줄 때만 붙는다) */
+  @media (orientation:landscape) and (max-height:520px){
+    .live3dSpacer{display:none;}
+    body.with3d #live3dHolder{
+      top:0;left:0;transform:none;width:44vw;max-width:none;height:100vh;
+      border-bottom:none;border-right:2px solid #232a38;
+    }
+    body.with3d #app{max-width:none;margin:0;}
+    body.with3d .topbar{margin-left:44vw;}
+    body.with3d .screen{margin-left:44vw;padding:10px 12px 24px;}
+    .turnBar{padding:7px;font-size:13px;}
+    .turnHint{font-size:11px;}
+    .pitchBox{width:120px;height:120px;}
+    .pitchZoneRect{left:21px;top:17px;width:78px;height:86px;}
+    .swingBigBtn{padding:14px;font-size:17px;}
+    .scoreBig{font-size:19px !important;margin:2px 0;}
+    .card{padding:9px;margin-bottom:7px;}
+    body.with3d .topbar{padding:8px 12px;}
+    body.with3d .topbar h2{font-size:15px;}
+    body.with3d .topbar .sub{font-size:10px;}
+    /* 점수판은 3D 화면(왼쪽) 아래에 겹쳐 놓는다 — 야구 중계처럼.
+       그만큼 오른쪽 칸이 비어서 투구·스윙 버튼이 화면 안에 들어온다. */
+    body.with3d .liveScoreCard{
+      position:fixed;left:8px;bottom:8px;width:calc(44vw - 16px);margin:0;z-index:6;
+      background:rgba(9,12,18,0.78);border-color:rgba(255,255,255,0.14);
+      backdrop-filter:blur(2px);
+    }
+    body.with3d .logBox{display:none;}
+    body.with3d .pitcherBox{padding:6px 8px;}
+  }
+  /* 아주 낮은 가로화면(구형 아이폰 등)은 한 번 더 줄인다 */
+  @media (orientation:landscape) and (max-height:360px){
+    .pitchBox{width:96px;height:96px;}
+    .pitchZoneRect{left:17px;top:14px;width:62px;height:69px;}
+    .swingBigBtn{padding:11px;font-size:16px;}
+    .card{padding:7px;margin-bottom:5px;}
+    body.with3d .topbar{padding:6px 12px;}
+  }
+
   /* 화면이 짧은 폰에서는 3D 칸을 줄여, 투구·스윙 버튼이 스크롤 없이 보이게 한다 */
-  @media (max-height:700px){
+  @media (max-height:700px) and (orientation:portrait){
     #live3dHolder{height:150px;}
     .live3dSpacer{height:154px;}
     .turnBar{padding:8px;font-size:14px;}
@@ -1314,10 +1355,28 @@ function showLive3D(show){
   const holder = document.getElementById('live3dHolder');
   if(!holder) return;
   if(show) initLive3D();
+  const on = !!(show && live3D.ready);
   /* 3D를 못 쓰면 빈 칸을 띄우지 않는다 */
-  holder.style.display = (show && live3D.ready) ? 'block' : 'none';
-  if(show && live3D.ready) resetBallAtMound();
+  holder.style.display = on ? 'block' : 'none';
+  /* 가로모드 두 칸 배치는 3D를 실제로 보여줄 때만 적용한다 */
+  document.body.classList.toggle('with3d', on);
+  if(on){ resizeLive3D(); resetBallAtMound(); }
 }
+/* 폰을 돌리거나 창 크기가 바뀌면 3D 그림도 그 크기에 맞춰 다시 그린다.
+   이걸 안 하면 돌렸을 때 화면이 찌그러진 채로 남는다. */
+function resizeLive3D(){
+  if(!live3D.ready) return;
+  const holder = document.getElementById('live3dHolder');
+  if(!holder || holder.style.display === 'none') return;
+  const w = holder.clientWidth, h = holder.clientHeight;
+  if(w < 10 || h < 10) return;
+  live3D.renderer.setSize(w, h);
+  live3D.camera.aspect = w / h;
+  live3D.camera.updateProjectionMatrix();
+  live3D.renderer.render(live3D.scene, live3D.camera);
+}
+window.addEventListener('resize', resizeLive3D);
+window.addEventListener('orientationchange', ()=>{ setTimeout(resizeLive3D, 250); });
 function tween(duration, onFrame, onDone){
   const start = performance.now();
   let finished = false;
@@ -2526,7 +2585,7 @@ function screenLiveGame(){
   return `${nav('리그모드 · ' + (L.autoPlay?'자동 진행':'직접 플레이'), `${L.inning}회 ${L.half==='top'?'초':'말'} · ${L.half==='top'?L.oppTeamName:state.team.name} 공격`)}
   <div class="screen">
     ${live3dGap()}
-    <div class="card" style="margin-top:0;">
+    <div class="card liveScoreCard" style="margin-top:0;">
       <div class="scoreBig" style="font-size:26px;">${L.userRuns} : ${L.oppRuns}</div>
       ${countBox(L)}
       <div class="row" style="justify-content:center;gap:16px;font-size:12px;color:#9aa4b2;">
@@ -2937,7 +2996,7 @@ function screenPvpMatch(){
   return `${nav('실시간 대결 · vs ' + (P.opponentName||''), `${P.inning}회 ${P.half==='top'?'초':'말'}`)}
   <div class="screen">
     ${live3dGap()}
-    <div class="card" style="margin-top:0;">
+    <div class="card liveScoreCard" style="margin-top:0;">
       <div class="scoreBig" style="font-size:26px;">${myRuns} : ${oppRuns}</div>
       <div class="row" style="justify-content:center;gap:14px;font-size:12px;color:#9aa4b2;">
         <span>아웃 ${P.outs}</span><span>1루 ${P.bases[0]?'●':'○'}</span><span>2루 ${P.bases[1]?'●':'○'}</span><span>3루 ${P.bases[2]?'●':'○'}</span>
