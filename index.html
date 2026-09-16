@@ -142,6 +142,72 @@
     .pitchZoneRect{left:23px;top:19px;width:86px;height:94px;}
     .swingBigBtn{padding:16px;font-size:18px;}
   }
+
+  /* ===== 태블릿 · PC 화면: 폰 화면 그대로 늘려서 옆이 휑하지 않게 한다 =====
+     화면이 넓어질수록 #app(게임판)과 #live3dHolder(3D 화면)를 같이 넓히고,
+     팀 선택·홈 화면의 칸을 2칸 → 3칸 → 4칸으로 늘려서 공간을 알차게 쓴다. */
+  @media (min-width:640px){
+    #app{max-width:640px;}
+    #live3dHolder{max-width:640px;}
+    .grid2{grid-template-columns:repeat(3,1fr);}
+    .menuGrid{grid-template-columns:repeat(3,1fr);}
+  }
+
+  /* ===== 화면 안 배치를 바꾸는 공용 클래스 =====
+     .gridList  : 일정·팩·과제처럼 같은 모양이 반복되는 목록 → 화면이 넓으면 여러 칸으로
+     .pairCards : 성격이 다른 카드 두 개(예: 타자 목록 / 투수 목록) → 화면이 넓으면 나란히
+     둘 다 폰(좁은 화면)에서는 원래처럼 한 줄씩 세로로 쌓인다. */
+  .gridList > *{margin-bottom:0;}
+  @media (min-width:640px){
+    .gridList{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;align-items:start;}
+  }
+  @media (min-width:1000px){
+    .gridList{grid-template-columns:repeat(3,1fr);}
+  }
+  @media (min-width:700px){
+    .pairCards{display:flex;gap:14px;align-items:flex-start;}
+    .pairCards > .card{flex:1 1 0;min-width:0;margin-top:0;}
+  }
+  @media (min-width:640px){
+    .loginBox{max-width:360px;margin-left:auto;margin-right:auto;}
+  }
+  @media (min-width:900px){
+    #app{max-width:860px;}
+    #live3dHolder{max-width:860px;}
+    .screen{padding:20px 30px 100px;}
+    .grid2{grid-template-columns:repeat(4,1fr);}
+    .menuGrid{grid-template-columns:repeat(4,1fr);}
+    .btn{font-size:15px;padding:14px;}
+    .card{padding:16px;}
+    /* 조준칸(투구)도 화면이 넓은 만큼 같이 키워서 조준하기 쉽게 한다 */
+    .pitchBox{width:220px;height:220px;}
+    .pitchZoneRect{left:39px;top:32px;width:142px;height:156px;}
+  }
+  @media (min-width:1200px){
+    #app{max-width:1040px;}
+    #live3dHolder{max-width:1040px;}
+  }
+
+  /* ===== PC 화면 · 실시간 경기 중(3D가 떠 있을 때): 위아래로 쌓지 않고 좌우로 배치 =====
+     폰을 눕혔을 때(위쪽 landscape 미디어쿼리)와 같은 방식으로,
+     3D 화면은 왼쪽 칸에 고정하고, 점수판·조작 버튼·중계 로그는 오른쪽 칸에 놓는다.
+     오른쪽 칸 안에서도 점수판과 조작 버튼을 나란히 놓아 세로 스크롤을 줄인다. */
+  @media (min-width:900px){
+    body.with3d .live3dSpacer{display:none;}
+    body.with3d #live3dHolder{
+      top:0;left:0;transform:none;width:min(40vw,520px);max-width:none;height:100vh;
+      border-bottom:none;border-right:2px solid #232a38;
+    }
+    body.with3d #app{max-width:none;margin:0;}
+    body.with3d .topbar{margin-left:min(40vw,520px);}
+    body.with3d .screen{
+      margin-left:min(40vw,520px);padding:24px 32px 100px;
+      display:flex;flex-wrap:wrap;align-items:flex-start;gap:16px;
+    }
+    body.with3d .liveScoreCard{flex:1 1 260px;margin-top:0 !important;}
+    body.with3d .liveControls{flex:1 1 340px;}
+    body.with3d .logBox{flex:1 1 100%;order:3;max-height:160px;}
+  }
 </style>
 </head>
 <body>
@@ -2214,7 +2280,7 @@ function goHome(){
 /* ================= SCREENS ================= */
 function screenLogin(){
   return `
-  <div class="screen" style="text-align:center;margin-top:70px;">
+  <div class="screen loginBox" style="text-align:center;margin-top:70px;">
     <h2 class="gameTitle">⚾ Korea Baseball Manager</h2>
     <p style="color:#9aa4b2;font-size:13px;">닉네임을 입력하고 로그인하세요</p>
     <input id="loginInput" placeholder="닉네임 입력" maxlength="10"
@@ -2311,17 +2377,19 @@ function screenPvpRank(){
         <button class="btn" onclick="goto('pvpconnect')">⚡ 서버 접속하러 가기</button>`}
     </div>
 
-    <div class="card">
-      <div class="row"><b>내 최고 기록</b></div>
-      <div class="statline" style="margin-top:6px;line-height:1.9;">
-        총 ${R.w+R.l}경기 · ${R.w}승 ${R.l}패 · 승률 ${R.w+R.l ? fmtAvg(pvpWinRate()) : '-'}<br>
-        지금 ${streakText(R.streak)} · 최고 ${R.bestStreak>0 ? R.bestStreak+'연승' : '-'}
+    <div class="pairCards">
+      <div class="card">
+        <div class="row"><b>내 최고 기록</b></div>
+        <div class="statline" style="margin-top:6px;line-height:1.9;">
+          총 ${R.w+R.l}경기 · ${R.w}승 ${R.l}패 · 승률 ${R.w+R.l ? fmtAvg(pvpWinRate()) : '-'}<br>
+          지금 ${streakText(R.streak)} · 최고 ${R.bestStreak>0 ? R.bestStreak+'연승' : '-'}
+        </div>
       </div>
-    </div>
 
-    <div class="card">
-      <div class="row"><b>최근 경기 결과</b><span class="statline">최근 20경기</span></div>
-      <div style="margin-top:8px;">${gameRows}</div>
+      <div class="card">
+        <div class="row"><b>최근 경기 결과</b><span class="statline">최근 20경기</span></div>
+        <div style="margin-top:8px;">${gameRows}</div>
+      </div>
     </div>
   </div>`;
 }
@@ -2334,11 +2402,13 @@ function screenHome(){
     <button class="backBtn" onclick="doLogout()">로그아웃</button>
   </div>
   <div class="screen">
-    <div class="card">
-      <div class="row"><b>오늘의 선수 뽑기</b><span class="statline">${state.dailyUsed && state.dailyDate===today() ? '완료' : '가능'}</span></div>
-      <button class="btn" onclick="openDaily()">🎁 데일리 선수 선택하기</button>
+    <div class="pairCards">
+      <div class="card">
+        <div class="row"><b>오늘의 선수 뽑기</b><span class="statline">${state.dailyUsed && state.dailyDate===today() ? '완료' : '가능'}</span></div>
+        <button class="btn" onclick="openDaily()">🎁 데일리 선수 선택하기</button>
+      </div>
+      ${pvpSummaryCard()}
     </div>
-    ${pvpSummaryCard()}
     <div class="menuGrid">
       <div class="menuItem" onclick="goto('lineup')"><div class="ic">📋</div><div class="lb">라인업 설정</div></div>
       <div class="menuItem" onclick="goto('missions')"><div class="ic">🎯</div><div class="lb">과제</div></div>
@@ -2376,7 +2446,7 @@ function screenShop(){
       <div>${rarityChip(rarityOf({common:50,rare:70,epic:80,legend:90}[tier]))} 카드팩<div class="statline">${PACK_PRICES[tier]} 코인</div></div>
       <button class="btn small" onclick="buyPack('${tier}')">구매</button>
     </div>`).join('');
-  return `${nav('상점', `보유 코인: 💰${state.coins}`)}<div class="screen">${rows}</div>`;
+  return `${nav('상점', `보유 코인: 💰${state.coins}`)}<div class="screen"><div class="gridList">${rows}</div></div>`;
 }
 
 function screenLineup(){
@@ -2395,24 +2465,26 @@ function screenLineup(){
   return `
   ${nav('라인업 설정','컨디션이 좋은 선수를 넣으면 유리해요')}
   <div class="screen">
-    <div class="card">${rows}</div>
-    <div class="card">
-      <b>선발 투수</b>
-      <div class="lineupRow" onclick="openPitcherPicker()" style="margin-top:8px;">
-        <div class="pos">SP</div>
-        <div class="nm">${sp.name} <span title="${spc.label}">${spc.icon}</span> ${rarityChip(sp.rarity)}</div>
-        <div class="st">제구${sp.control} 구위${sp.stuff} 체력${sp.stamina}</div>
+    <div class="card"><div class="gridList">${rows}</div></div>
+    <div class="pairCards">
+      <div class="card">
+        <b>선발 투수</b>
+        <div class="lineupRow" onclick="openPitcherPicker()" style="margin-top:8px;">
+          <div class="pos">SP</div>
+          <div class="nm">${sp.name} <span title="${spc.label}">${spc.icon}</span> ${rarityChip(sp.rarity)}</div>
+          <div class="st">제구${sp.control} 구위${sp.stuff} 체력${sp.stamina}</div>
+        </div>
+        <div class="statline" style="margin-top:8px;">
+          체력 ${sp.stamina} → 한 경기에 약 <b>${staminaLimit(sp)}타자</b>까지 버텨요.
+          그 뒤로는 지쳐서 제구와 구위가 떨어지니 불펜으로 바꿔주세요.
+        </div>
       </div>
-      <div class="statline" style="margin-top:8px;">
-        체력 ${sp.stamina} → 한 경기에 약 <b>${staminaLimit(sp)}타자</b>까지 버텨요.
-        그 뒤로는 지쳐서 제구와 구위가 떨어지니 불펜으로 바꿔주세요.
-      </div>
-    </div>
-    <div class="card">
-      <b>오늘의 컨디션</b>
-      <div class="statline" style="margin-top:6px;line-height:1.9;">
-        ${CONDITIONS.map(c=>`${c.icon} ${c.label} <b style="color:${c.color};">${c.mod>0?'+':''}${c.mod}</b>`).join(' · ')}
-        <br>컨디션은 날마다 바뀌어요. 오늘 컨디션이 좋은 선수를 라인업에 넣어보세요.
+      <div class="card">
+        <b>오늘의 컨디션</b>
+        <div class="statline" style="margin-top:6px;line-height:1.9;">
+          ${CONDITIONS.map(c=>`${c.icon} ${c.label} <b style="color:${c.color};">${c.mod>0?'+':''}${c.mod}</b>`).join(' · ')}
+          <br>컨디션은 날마다 바뀌어요. 오늘 컨디션이 좋은 선수를 라인업에 넣어보세요.
+        </div>
       </div>
     </div>
   </div>`;
@@ -2433,7 +2505,7 @@ function screenMissions(){
       </div>
     </div>`;
   }).join('');
-  return `${nav('과제','과제를 완료하면 카드팩을 받을 수 있어요')}<div class="screen">${rows}</div>`;
+  return `${nav('과제','과제를 완료하면 카드팩을 받을 수 있어요')}<div class="screen"><div class="gridList">${rows}</div></div>`;
 }
 
 function seasonComplete(){ return state.schedule.every(s=>s.played); }
@@ -2482,7 +2554,7 @@ function screenLeague(){
         <button class="btn" onclick="finishSeason()">시즌 결산하기</button>
       </div>` : ''}
     <button class="btn secondary" style="margin-bottom:10px;" onclick="goto('standings')">📊 리그 순위표 보기</button>
-    ${rows}
+    <div class="gridList">${rows}</div>
   </div>`;
 }
 
@@ -2592,7 +2664,7 @@ function screenLiveGame(){
         <span>이닝 ${L.inning}</span><span>${baseText}</span>
       </div>
     </div>
-    <div class="card">${controls}</div>
+    <div class="card liveControls">${controls}</div>
     <div class="logBox">${L.log.slice(0,6).map(l=>`<div>${l}</div>`).join('')}</div>
   </div>`;
 }
@@ -2606,7 +2678,7 @@ function screenFriendly(){
         <button class="btn small" onclick="startLiveGame('${t.id}', false, false)">직접 플레이</button>
       </div>
     </div>`).join('');
-  return `${nav('친선경기','순위에 영향 없이 자유롭게 대결할 수 있어요')}<div class="screen">${rows}</div>`;
+  return `${nav('친선경기','순위에 영향 없이 자유롭게 대결할 수 있어요')}<div class="screen"><div class="gridList">${rows}</div></div>`;
 }
 
 function screenPacks(){
@@ -2618,7 +2690,7 @@ function screenPacks(){
       <div>${rarityChip(rarityOf({common:50,rare:70,epic:80,legend:90}[tier]))} 카드팩</div>
       <button class="btn small" onclick="openPack(${i})">개봉하기</button>
     </div>`).join('');
-  return `${nav('팩 개봉', `${state.packs.length}개 보유중`)}<div class="screen">${rows}</div>`;
+  return `${nav('팩 개봉', `${state.packs.length}개 보유중`)}<div class="screen"><div class="gridList">${rows}</div></div>`;
 }
 
 function lvChip(p){
@@ -2652,8 +2724,10 @@ function screenRoster(){
   const batters = state.roster.batters.map(rosterRow).join('');
   const pitchers = state.roster.pitchers.map(rosterRow).join('');
   return `${nav('보유 선수','선수를 탭하면 키우거나 이름을 바꿀 수 있어요')}<div class="screen">
-    <div class="card"><b>타자 (${state.roster.batters.length}명)</b>${batters}</div>
-    <div class="card"><b>투수 (${state.roster.pitchers.length}명)</b>${pitchers}</div>
+    <div class="pairCards">
+      <div class="card"><b>타자 (${state.roster.batters.length}명)</b>${batters}</div>
+      <div class="card"><b>투수 (${state.roster.pitchers.length}명)</b>${pitchers}</div>
+    </div>
   </div>`;
 }
 
@@ -2726,20 +2800,22 @@ function screenStats(){
         ${hrKing && hrKing.stat.hr ? `💥 홈런왕 — <b>${hrKing.name}</b> ${hrKing.stat.hr}홈런` : ''}
       </div>
     </div>` : ''}
-    <div class="card">
-      <b>타자</b>
-      <table class="box">
-        <thead><tr><th>이름</th><th>경기</th><th>타수</th><th>안타</th><th>홈런</th><th>타점</th><th>타율</th></tr></thead>
-        <tbody>${bRows}</tbody>
-      </table>
-    </div>
-    <div class="card">
-      <b>투수</b>
-      <table class="box">
-        <thead><tr><th>이름</th><th>경기</th><th>이닝</th><th>삼진</th><th>승</th><th>패</th><th>방어율</th></tr></thead>
-        <tbody>${pRows}</tbody>
-      </table>
-      <div class="statline" style="margin-top:8px;">방어율은 9이닝당 내준 점수예요. 낮을수록 좋아요.</div>
+    <div class="pairCards">
+      <div class="card">
+        <b>타자</b>
+        <table class="box">
+          <thead><tr><th>이름</th><th>경기</th><th>타수</th><th>안타</th><th>홈런</th><th>타점</th><th>타율</th></tr></thead>
+          <tbody>${bRows}</tbody>
+        </table>
+      </div>
+      <div class="card">
+        <b>투수</b>
+        <table class="box">
+          <thead><tr><th>이름</th><th>경기</th><th>이닝</th><th>삼진</th><th>승</th><th>패</th><th>방어율</th></tr></thead>
+          <tbody>${pRows}</tbody>
+        </table>
+        <div class="statline" style="margin-top:8px;">방어율은 9이닝당 내준 점수예요. 낮을수록 좋아요.</div>
+      </div>
     </div>
   </div>`;
 }
@@ -2791,45 +2867,49 @@ function screenPlayerDetail(){
       </div>
     </div>
 
-    <div class="card">
-      <div class="row">
-        <b>오늘의 컨디션</b>
-        <span class="rarityChip" style="background:${cond.color};">${cond.icon} ${cond.label}</span>
+    <div class="pairCards">
+      <div class="card">
+        <div class="row">
+          <b>오늘의 컨디션</b>
+          <span class="rarityChip" style="background:${cond.color};">${cond.icon} ${cond.label}</span>
+        </div>
+        <div class="statline" style="margin-top:6px;">
+          오늘 경기에서 모든 능력치 <b style="color:${cond.color};">${cond.mod>0?'+':''}${cond.mod}</b>
+          ${cond.mod===0?' (변화 없음)':''} · 컨디션은 날마다 바뀌어요
+        </div>
       </div>
-      <div class="statline" style="margin-top:6px;">
-        오늘 경기에서 모든 능력치 <b style="color:${cond.color};">${cond.mod>0?'+':''}${cond.mod}</b>
-        ${cond.mod===0?' (변화 없음)':''} · 컨디션은 날마다 바뀌어요
-      </div>
-    </div>
 
-    <div class="card">
-      <div class="row"><b>${state.season}시즌 기록</b><span class="statline">${st.g}경기 출전</span></div>
-      <div class="statline" style="margin-top:8px;line-height:1.9;">
-      ${p.type==='batter'
-        ? `타수 ${st.ab} · 안타 ${st.h} · 홈런 ${st.hr} · 타점 ${st.rbi} · 볼넷 ${st.bb}<br>
-           타율 <b style="color:#7fdc8a;font-size:15px;">${st.ab ? fmtAvg(battingAvg(st)) : '-'}</b>`
-        : `이닝 ${Math.floor(st.outs/3)}.${st.outs%3} · 삼진 ${st.k} · ${st.w}승 ${st.l}패<br>
-           방어율 <b style="color:#7fdc8a;font-size:15px;">${fmtEra(st)}</b>
-           ${p.type==='pitcher' ? `<br>체력 ${p.stamina} → 한 경기에 약 <b>${staminaLimit(p)}타자</b>까지 버텨요` : ''}`}
+      <div class="card">
+        <div class="row"><b>${state.season}시즌 기록</b><span class="statline">${st.g}경기 출전</span></div>
+        <div class="statline" style="margin-top:8px;line-height:1.9;">
+        ${p.type==='batter'
+          ? `타수 ${st.ab} · 안타 ${st.h} · 홈런 ${st.hr} · 타점 ${st.rbi} · 볼넷 ${st.bb}<br>
+             타율 <b style="color:#7fdc8a;font-size:15px;">${st.ab ? fmtAvg(battingAvg(st)) : '-'}</b>`
+          : `이닝 ${Math.floor(st.outs/3)}.${st.outs%3} · 삼진 ${st.k} · ${st.w}승 ${st.l}패<br>
+             방어율 <b style="color:#7fdc8a;font-size:15px;">${fmtEra(st)}</b>
+             ${p.type==='pitcher' ? `<br>체력 ${p.stamina} → 한 경기에 약 <b>${staminaLimit(p)}타자</b>까지 버텨요` : ''}`}
+        </div>
       </div>
     </div>
 
     <div class="card">
       <div class="row"><b>훈련</b><span class="statline">코인으로 능력치 +1</span></div>
-      <div style="margin-top:8px;">${statRows}</div>
+      <div class="gridList" style="margin-top:8px;">${statRows}</div>
       <div class="statline" style="margin-top:4px;">능력치가 높을수록 훈련비가 비싸져요 (최대 99)</div>
     </div>
 
-    <div class="card">
-      <div class="row"><b>합성</b><span class="statline">안 쓰는 선수를 재료로 크게 키우기</span></div>
-      <button class="btn ${canFuse?'':'secondary'}" onclick="${canFuse?`openFuse(${p.id},'${p.type}')`:''}">
-        ${canFuse ? '🔥 재료 선수 고르기' : '재료로 쓸 수 있는 선수가 없어요'}
-      </button>
-    </div>
+    <div class="pairCards">
+      <div class="card">
+        <div class="row"><b>합성</b><span class="statline">안 쓰는 선수를 재료로 크게 키우기</span></div>
+        <button class="btn ${canFuse?'':'secondary'}" onclick="${canFuse?`openFuse(${p.id},'${p.type}')`:''}">
+          ${canFuse ? '🔥 재료 선수 고르기' : '재료로 쓸 수 있는 선수가 없어요'}
+        </button>
+      </div>
 
-    <div class="card">
-      <button class="btn secondary" onclick="openRename(${p.id},'${p.type}')">✏️ 이름 바꾸기</button>
-      <button class="btn secondary" onclick="goto('roster')">← 보유 선수로 돌아가기</button>
+      <div class="card">
+        <button class="btn secondary" onclick="openRename(${p.id},'${p.type}')">✏️ 이름 바꾸기</button>
+        <button class="btn secondary" onclick="goto('roster')">← 보유 선수로 돌아가기</button>
+      </div>
     </div>
   </div>`;
 }
@@ -2876,7 +2956,7 @@ function screenFuse(){
       </button>
       <button class="btn secondary" onclick="cancelFuse()">취소</button>
     </div>
-    <div class="card"><b>재료로 쓸 선수 고르기</b><div style="margin-top:8px;">${rows}</div></div>
+    <div class="card"><b>재료로 쓸 선수 고르기</b><div class="gridList" style="margin-top:8px;">${rows}</div></div>
   </div>`;
 }
 
@@ -2893,7 +2973,7 @@ function screenMonthly(){
       ${mine ? (state.monthlyClaimed ? `<span class="statline">영입완료</span>` : `<button class="btn small" onclick="claimMonthly()">영입하기</button>`) : `<span class="statline">타 구단</span>`}
     </div>`;
   }).join('');
-  return `${nav('이달의 선수', '영입하면 이번 달 동안 모든 능력치가 상승합니다 · 내 구단만 영입 가능')}<div class="screen">${rows}</div>`;
+  return `${nav('이달의 선수', '영입하면 이번 달 동안 모든 능력치가 상승합니다 · 내 구단만 영입 가능')}<div class="screen"><div class="gridList">${rows}</div></div>`;
 }
 
 function screenGoldenGlove(){
@@ -2908,7 +2988,7 @@ function screenGoldenGlove(){
       ${state.goldenGloveClaimed ? `<span class="statline">이번 달 영입 완료</span>` : `<button class="btn small" onclick="claimGoldenGlove(${i})">영입</button>`}
     </div>`;
   }).join('');
-  return `${nav('골든글러브 영입','매달 포지션별 최고의 선수 중 1명을 영입할 수 있어요 (월 1회)')}<div class="screen">${rows}</div>`;
+  return `${nav('골든글러브 영입','매달 포지션별 최고의 선수 중 1명을 영입할 수 있어요 (월 1회)')}<div class="screen"><div class="gridList">${rows}</div></div>`;
 }
 
 function screenPvpConnect(){
@@ -2921,20 +3001,22 @@ function screenPvpConnect(){
       <button class="btn secondary" onclick="leavePvp()">취소</button>`;
   } else {
     body = `
-      <div class="card">
-        <div class="row"><b>⚡ 진짜 사람과 대결</b><span class="statline">한 명은 투구, 한 명은 타격</span></div>
-        <button class="btn" style="margin-top:10px;" onclick="connectPvpDefault()">🎮 바로 대결 시작</button>
-        <div class="statline" style="margin-top:8px;text-align:center;">
-          친구도 같은 게임에서 '바로 대결 시작'을 누르면 자동으로 만나요
+      <div class="pairCards">
+        <div class="card">
+          <div class="row"><b>⚡ 진짜 사람과 대결</b><span class="statline">한 명은 투구, 한 명은 타격</span></div>
+          <button class="btn" style="margin-top:10px;" onclick="connectPvpDefault()">🎮 바로 대결 시작</button>
+          <div class="statline" style="margin-top:8px;text-align:center;">
+            친구도 같은 게임에서 '바로 대결 시작'을 누르면 자동으로 만나요
+          </div>
         </div>
-      </div>
-      <div class="card">
-        <div class="statline" style="margin-bottom:8px;">다른 서버로 접속하기 (직접 서버를 켠 경우)</div>
-        <input id="pvpUrlInput" placeholder="wss://서버주소" value="${P.serverUrl||DEFAULT_PVP_SERVER}"
-          style="width:100%;padding:12px;border-radius:10px;border:1px solid #2a3242;background:#0f131b;color:#fff;font-size:13px;margin-bottom:10px;">
-        <button class="btn secondary" onclick="connectPvp()">이 주소로 접속</button>
-        <div class="statline" style="margin-top:8px;">
-          내 컴퓨터에서 서버를 켰다면 <b>ws://localhost:8080</b>
+        <div class="card">
+          <div class="statline" style="margin-bottom:8px;">다른 서버로 접속하기 (직접 서버를 켠 경우)</div>
+          <input id="pvpUrlInput" placeholder="wss://서버주소" value="${P.serverUrl||DEFAULT_PVP_SERVER}"
+            style="width:100%;padding:12px;border-radius:10px;border:1px solid #2a3242;background:#0f131b;color:#fff;font-size:13px;margin-bottom:10px;">
+          <button class="btn secondary" onclick="connectPvp()">이 주소로 접속</button>
+          <div class="statline" style="margin-top:8px;">
+            내 컴퓨터에서 서버를 켰다면 <b>ws://localhost:8080</b>
+          </div>
         </div>
       </div>`;
   }
@@ -3002,7 +3084,7 @@ function screenPvpMatch(){
         <span>아웃 ${P.outs}</span><span>1루 ${P.bases[0]?'●':'○'}</span><span>2루 ${P.bases[1]?'●':'○'}</span><span>3루 ${P.bases[2]?'●':'○'}</span>
       </div>
     </div>
-    <div class="card">${controls}</div>
+    <div class="card liveControls">${controls}</div>
     <div class="logBox">${P.log.slice(0,6).map(l=>`<div>${l}</div>`).join('')}</div>
   </div>`;
 }
