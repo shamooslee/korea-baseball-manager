@@ -2048,12 +2048,18 @@ function requestRanking(){
 
 function handlePvpMessage(msg){
   const P = state.pvp;
-  if(msg.type==='queued'){ P.status='queued'; requestRanking(); render(); }
+  if(msg.type==='queued'){
+    P.status='queued';
+    P.queuedAt = Date.now();      /* 언제부터 기다렸는지 기록 */
+    startQueueTimer();            /* 화면의 '○초째 기다리는 중'을 1초마다 갱신 */
+    requestRanking(); render();
+  }
   else if(msg.type==='ranking'){
     state.ranking = { list: Array.isArray(msg.list) ? msg.list : [], updatedAt: Date.now() };
     render();
   }
   else if(msg.type==='matched'){
+    stopQueueTimer();           /* 상대를 찾았으니 대기 타이머는 멈춘다 */
     P.recorded = false;
     P.status='matched'; P.role=msg.role; P.opponentName=msg.opponentName; P.opponentTeamName=msg.opponentTeamName;
     P.half='top'; P.inning=1; P.outs=0; P.bases=[false,false,false];
@@ -2142,8 +2148,42 @@ function pvpFinalizeSwing(){
   P.ws.send(JSON.stringify({type:'swing_result', swingType:P.swingType, timingQuality}));
   render();
 }
+/* ===== 상대가 없을 때: 컴퓨터와 가상 대결 =====
+   실시간 대결은 진짜 사람이 접속해야 시작된다. 아무도 없으면 계속 기다리게 되는데,
+   그럴 때 컴퓨터 팀과 연습 경기를 할 수 있게 해준다.
+   경기 진행은 이미 잘 돌아가는 '친선경기'를 그대로 쓴다(새로 만들지 않는다). */
+let queueTimer = null;
+function startQueueTimer(){
+  stopQueueTimer();
+  queueTimer = setInterval(()=>{
+    if(state.screen==='pvpconnect' && state.pvp.status==='queued') render();
+    else stopQueueTimer();
+  }, 1000);
+}
+function stopQueueTimer(){
+  if(queueTimer){ clearInterval(queueTimer); queueTimer = null; }
+}
+/* 지금까지 몇 초 기다렸는지 */
+function queueWaitSec(){
+  const t = state.pvp.queuedAt;
+  return t ? Math.floor((Date.now() - t)/1000) : 0;
+}
+function startVirtualMatch(){
+  const P = state.pvp;
+  stopQueueTimer();
+  /* 대기줄에서 빠져나온다. leavePvp()와 달리 홈으로 가지 않고 바로 경기로 이어간다 */
+  if(P.ws){ try{ P.ws.send(JSON.stringify({type:'leave'})); P.ws.close(); }catch(e){} }
+  P.ws = null; P.status = 'idle'; P.queuedAt = null;
+  /* 상대는 우리 리그 10개 팀 중 내 팀을 뺀 팀에서 무작위로 고른다 */
+  const others = LEAGUE_TEAMS.filter(t => t.id !== state.team.id);
+  const opp = others[Math.floor(Math.random()*others.length)];
+  state.modal = {type:'info', text:`상대가 없어서 ${opp.name}와(과) 연습 대결을 시작합니다.\n연습 경기라 리그 순위와 대결 전적에는 들어가지 않아요.`};
+  startLiveGame(opp.id, false, false);
+}
+
 function leavePvp(){
   const P = state.pvp;
+  stopQueueTimer();
   if(P.ws){ try{ P.ws.send(JSON.stringify({type:'leave'})); P.ws.close(); }catch(e){} }
   state.pvp = { ws:null, serverUrl:P.serverUrl, status:'idle', role:null, opponentName:null, opponentTeamName:null,
     half:'top', inning:1, outs:0, bases:[false,false,false], runsHome:0, runsAway:0, hitsHome:0, hitsAway:0,
@@ -2997,7 +3037,23 @@ function screenPvpConnect(){
   if(P.status==='connecting'){
     body = `<div class="card" style="text-align:center;">서버에 연결하는 중...</div>`;
   } else if(P.status==='queued'){
-    body = `<div class="card" style="text-align:center;">상대를 찾는 중입니다...<br><span class="statline">다른 플레이어가 접속하면 자동으로 매칭돼요</span></div>
+    const sec = queueWaitSec();
+    /* 15초 넘게 기다리면 '컴퓨터와 하기' 버튼을 눈에 띄게 보여준다 */
+    const longWait = sec >= 15;
+    body = `
+      <div class="card" style="text-align:center;">
+        상대를 찾는 중입니다... <b>${sec}초</b><br>
+        <span class="statline">다른 플레이어가 접속하면 자동으로 매칭돼요</span>
+      </div>
+      <div class="card">
+        <div class="row"><b>🤖 지금 아무도 없나요?</b></div>
+        <div class="statline" style="margin:6px 0 10px;">
+          ${longWait ? '오래 기다리고 있어요. 컴퓨터 팀과 연습 대결을 해보세요.'
+                     : '기다리는 동안 컴퓨터 팀과 연습 대결을 할 수 있어요.'}
+          투구와 타격은 실시간 대결과 똑같아요. 단, 연습이라 대결 전적에는 안 들어가요.
+        </div>
+        <button class="btn ${longWait ? '' : 'secondary'}" onclick="startVirtualMatch()">🤖 컴퓨터와 연습 대결하기</button>
+      </div>
       <button class="btn secondary" onclick="leavePvp()">취소</button>`;
   } else {
     body = `
