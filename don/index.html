@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#e9eee7">
+<style>*,*::before,*::after{box-sizing:border-box}html{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}body{margin:0;-webkit-text-size-adjust:100%}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>우리집 돈</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: 지폐 한 장(잔액) 위에 장부가 이어지는 한 줄 세로 구성. 은행권 인쇄 잉크 + 붉은 인장. */
+:root{
+  --paper:#e9eee7; --sheet:#f6f8f3; --ink:#1c3646; --ink-soft:#56707c; --rule:#c7d2ca;
+  --seal:#b5303a; --guil:#9fb8b0; --good:#2f7a52; --warn:#9a6a12;
+  --f-seal:"Black Han Sans","Noto Sans KR",sans-serif;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0f1d25; --sheet:#152731; --ink:#e2e9e3; --ink-soft:#93a9b0; --rule:#284351;
+  --seal:#e05a5f; --guil:#2c4a52; --good:#6cc493; --warn:#e2b453; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0f1d25; --sheet:#152731; --ink:#e2e9e3; --ink-soft:#93a9b0; --rule:#284351;
+  --seal:#e05a5f; --guil:#2c4a52; --good:#6cc493; --warn:#e2b453; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55}
+.wrap{max-width:560px;margin:0 auto;padding:16px 16px 48px;display:flex;flex-direction:column;gap:22px}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--seal);outline-offset:2px}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+
+/* 상단: 지금 누가 쓰는지 */
+.who{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{font-family:var(--f-seal);font-size:22px;letter-spacing:.02em}
+.brand small{font-family:var(--f-body);font-size:12px;color:var(--ink-soft);margin-left:6px;font-weight:500}
+.who label{font-size:12px;color:var(--ink-soft);display:flex;align-items:center;gap:8px}
+.who select{background:var(--sheet);border:1px solid var(--rule);border-radius:999px;padding:6px 12px;font-weight:700}
+
+/* 지폐 */
+.note{position:relative;overflow:hidden;background:var(--sheet);border:1px solid var(--rule);border-radius:6px;padding:22px 20px 18px;
+  background-image:repeating-radial-gradient(circle at 88% 120%, transparent 0 9px, var(--guil) 9px 10px),
+  repeating-linear-gradient(115deg, transparent 0 13px, color-mix(in srgb,var(--guil) 35%,transparent) 13px 14px);
+  background-blend-mode:normal}
+.note::before{content:"";position:absolute;inset:8px;border:1px dashed var(--rule);border-radius:3px;pointer-events:none}
+.note-top{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.14em;color:var(--ink-soft);text-transform:uppercase}
+.note-owner{margin-top:14px;font-size:14px;color:var(--ink-soft)}
+.note-owner b{color:var(--ink);font-size:17px}
+.amount{display:flex;align-items:flex-end;gap:14px;margin-top:4px}
+.amount .n{font-family:var(--f-num);font-weight:600;font-size:clamp(44px,13vw,68px);line-height:1;letter-spacing:-.02em}
+.seal{font-family:var(--f-seal);color:var(--seal);border:3px solid var(--seal);border-radius:50%;width:62px;height:62px;display:grid;place-items:center;
+  font-size:30px;transform:rotate(-12deg);flex:none;margin-bottom:-4px;opacity:.9}
+.note-foot{display:flex;justify-content:space-between;gap:10px;margin-top:16px;font-size:12px;color:var(--ink-soft);flex-wrap:wrap}
+
+/* 섹션 탭 */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--rule);overflow-x:auto}
+.tabs button{background:none;border:0;padding:10px 12px;font-weight:700;color:var(--ink-soft);border-bottom:3px solid transparent;margin-bottom:-1px;cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--seal)}
+.tabs .badge{font-family:var(--f-num);font-size:11px;background:var(--seal);color:var(--sheet);border-radius:999px;padding:0 6px;margin-left:4px}
+
+h2{font-size:13px;letter-spacing:.12em;color:var(--ink-soft);margin:0 0 10px;font-weight:700}
+.panel{display:flex;flex-direction:column;gap:18px}
+.form{display:grid;gap:12px}
+.field{display:grid;gap:5px}
+.field span{font-size:12px;color:var(--ink-soft);font-weight:500}
+.field input,.field select{background:var(--sheet);border:1px solid var(--rule);border-radius:6px;padding:11px 12px;width:100%}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.modes{display:flex;gap:6px;flex-wrap:wrap}
+.modes button{background:transparent;border:1px solid var(--rule);border-radius:999px;padding:6px 14px;cursor:pointer;font-size:13px;font-weight:500}
+.modes button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.quick{display:flex;gap:6px;flex-wrap:wrap}
+.quick button{background:none;border:1px dashed var(--rule);border-radius:6px;padding:4px 10px;font-family:var(--f-num);font-size:13px;cursor:pointer}
+.go{background:var(--seal);color:#fff;border:0;border-radius:6px;padding:13px;font-weight:700;font-size:16px;cursor:pointer}
+.go:disabled{opacity:.45;cursor:not-allowed}
+.ghost{background:none;border:1px solid var(--rule);border-radius:6px;padding:7px 12px;cursor:pointer;font-size:13px;font-weight:500}
+.msg{font-size:13px;min-height:1.2em}
+.msg.err{color:var(--seal)} .msg.ok{color:var(--good)}
+
+/* 장부 줄 */
+.ledger{list-style:none;margin:0;padding:0;border-top:1px solid var(--rule)}
+.ledger li{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:11px 2px;border-bottom:1px solid var(--rule);min-width:0}
+.ledger .t{font-weight:500;min-width:0;overflow-wrap:anywhere}
+.ledger .s{font-size:12px;color:var(--ink-soft);grid-column:1}
+.ledger .v{font-family:var(--f-num);font-weight:600;grid-row:1/span 2;grid-column:2;align-self:center;text-align:right}
+.v.plus{color:var(--good)} .v.minus{color:var(--seal)}
+.kind{font-size:10px;letter-spacing:.08em;border:1px solid currentColor;border-radius:3px;padding:0 4px;margin-right:6px;vertical-align:1px}
+.empty{color:var(--ink-soft);font-size:14px;padding:14px 0;border-top:1px solid var(--rule)}
+
+.mem{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}
+.dot{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;font-size:14px}
+.role{font-size:11px;color:var(--ink-soft);margin-left:6px}
+.actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px}
+.pill.wait{color:var(--warn);border:1px solid var(--warn)}
+.cat{font-size:10px;letter-spacing:.06em;border-radius:3px;padding:1px 5px;margin-right:6px;vertical-align:1px;color:var(--sheet)}
+.cat.game{background:#2d6a8a}.cat.book{background:#3f7d4f}.cat.etc{background:var(--ink-soft)}
+.price{font-family:var(--f-num);font-weight:600}
+.short{font-size:11px;color:var(--seal);display:block;text-align:right;margin-top:2px}
+.clock{font-family:var(--f-num);font-size:22px;font-weight:600;color:var(--seal)}
+.pill.run{color:var(--seal);border:1px solid var(--seal)}
+.pill.done{color:var(--ink-soft);border:1px solid var(--rule)}
+.pill.ready{color:var(--good);border:1px solid var(--good)}
+.who-right{display:flex;align-items:center;gap:8px}
+.who-right{display:flex;align-items:center;gap:10px;font-size:13px}
+.who-right b{font-weight:700}
+.login{display:flex;flex-direction:column;gap:18px;padding-block:8px 24px}
+.login-title{font-family:var(--f-seal);font-size:clamp(30px,9vw,44px);font-weight:400;margin:0;line-height:1.1;text-wrap:balance}
+.login-sub{margin:-8px 0 0;color:var(--ink-soft);font-size:14px}
+.people{display:flex;flex-wrap:wrap;gap:10px}
+.person{display:flex;align-items:center;gap:10px;background:var(--sheet);border:1px solid var(--rule);border-radius:999px;padding:6px 16px 6px 6px;cursor:pointer;font-weight:700;font-size:15px}
+.person[aria-pressed="true"]{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.pinpad{display:flex;flex-direction:column;align-items:center;gap:16px;background:var(--sheet);border:1px solid var(--rule);border-radius:6px;padding:22px 16px}
+.pin-who{font-size:15px;text-align:center}
+.pin-who b{font-size:18px}
+.dots{display:flex;gap:14px}
+.dots i{width:16px;height:16px;border-radius:50%;border:2px solid var(--ink)}
+.dots i.on{background:var(--seal);border-color:var(--seal)}
+.keys{display:grid;grid-template-columns:repeat(3,64px);gap:10px}
+.keys button{height:56px;border-radius:50%;border:1px solid var(--rule);background:var(--paper);font-family:var(--f-num);font-size:22px;font-weight:600;cursor:pointer}
+.keys button.txt{font-family:var(--f-body);font-size:13px;font-weight:500;border-color:transparent;background:none}
+.keys button:active{background:var(--rule)}
+.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+@media (prefers-reduced-motion:reduce){.shake{animation:none}}
+.appwrap{display:flex;flex-direction:column;gap:22px}
+.thumb{width:56px;height:56px;object-fit:cover;border-radius:4px;border:1px solid var(--rule);cursor:zoom-in;display:block;background:var(--rule)}
+.thumb-btn{padding:0;border:0;background:none;cursor:zoom-in}
+.photo-tag{font-size:11px;color:var(--ink-soft);text-decoration:underline;background:none;border:0;padding:0;cursor:pointer}
+.proof{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;background:var(--sheet);border:1px solid var(--ink);border-radius:6px;padding:14px}
+.proof img{width:96px;height:96px;object-fit:cover;border-radius:4px}
+.proof p{margin:0 0 8px;font-weight:500}
+.viewer{position:fixed;inset:0;z-index:20;background:rgba(10,18,24,.88);display:grid;place-items:center;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.viewer img{max-width:100%;max-height:78vh;border-radius:4px}
+.viewer figcaption{color:#e9eee7;text-align:center;margin-top:10px;font-size:14px}
+.viewer button{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:16px;background:#e9eee7;color:#1c3646;border:0;border-radius:999px;padding:8px 14px;font-weight:700;cursor:pointer}
+.foot{font-size:12px;color:var(--ink-soft);border-top:1px solid var(--rule);padding-top:12px}
+.start{background:var(--sheet);border:1px solid var(--rule);border-radius:6px;padding:20px}
+.start p{margin:0 0 12px;color:var(--ink-soft)}
+@media (prefers-reduced-motion:no-preference){.seal{transition:transform .3s}.note:hover .seal{transform:rotate(-4deg)}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="who">
+    <div class="brand">우리집 돈<small>가족 화폐</small></div>
+    <div class="who-right" id="whoBox" hidden><span id="whoName"></span><button type="button" class="ghost" id="logoutBtn">로그아웃</button></div>
+  </header>
+
+  <section class="login" id="login" aria-label="로그인">
+    <h1 class="login-title" id="loginTitle">누가 쓰나요?</h1>
+    <p class="login-sub" id="loginSub">내 이름을 누르고 PIN 4자리를 입력하세요.</p>
+    <div class="people" id="people" role="group" aria-label="가족 선택"></div>
+    <div class="pinpad" id="pinpad" hidden>
+      <div class="pin-who" id="pinWho"></div>
+      <div class="dots" id="dots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="keys" id="keys">
+        <button type="button" id="k1">1</button><button type="button" id="k2">2</button><button type="button" id="k3">3</button>
+        <button type="button" id="k4">4</button><button type="button" id="k5">5</button><button type="button" id="k6">6</button>
+        <button type="button" id="k7">7</button><button type="button" id="k8">8</button><button type="button" id="k9">9</button>
+        <button type="button" class="txt" id="kx" data-k="x">취소</button><button type="button" id="k0">0</button><button type="button" class="txt" id="kb" data-k="b">지우기</button>
+      </div>
+      <div class="msg" id="pinMsg" role="status"></div>
+    </div>
+    <form class="form pinpad" id="firstForm" hidden autocomplete="off" style="align-items:stretch">
+      <div class="field"><span>부모 이름</span><input id="firstName" maxlength="12" placeholder="예: 엄마"></div>
+      <div class="field"><span>PIN 4자리</span><input id="firstPin" type="password" inputmode="numeric" maxlength="4" placeholder="••••"></div>
+      <button class="go" type="submit">시작하기</button>
+      <div class="msg" id="firstMsg" role="status"></div>
+    </form>
+  </section>
+
+  <div class="appwrap" id="app" hidden>
+
+  <section class="note" aria-label="내 잔액">
+    <div class="note-top"><span>우리집 돈은행 발행</span><span id="serial" class="num">No. ——</span></div>
+    <div class="note-owner" id="owner">로그인하세요</div>
+    <div class="amount"><span class="n" id="bal">0</span><span class="seal">돈</span></div>
+    <div class="note-foot"><span id="circ">시중 유통량 0 돈</span><span id="sync">연결 중…</span></div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-send" aria-selected="true" data-p="send">보내기</button>
+    <button role="tab" id="tab-chores" aria-selected="false" data-p="chores">집안일<span class="badge" id="pendBadge" hidden>0</span></button>
+    <button role="tab" id="tab-shop" aria-selected="false" data-p="shop">상점<span class="badge" id="runBadge" hidden>●</span></button>
+    <button role="tab" id="tab-family" aria-selected="false" data-p="family">가족</button>
+    <button role="tab" id="tab-log" aria-selected="false" data-p="log">기록</button>
+  </nav>
+
+  <!-- 보내기 -->
+  <section class="panel" id="p-send">
+    <div class="modes" id="modes" role="group" aria-label="거래 종류">
+      <button id="m-send" data-m="send" aria-pressed="true">가족에게 보내기</button>
+      <button id="m-mint" data-m="mint" aria-pressed="false" class="parent-only">용돈 발행</button>
+      <button id="m-burn" data-m="burn" aria-pressed="false" class="parent-only">사용·차감</button>
+    </div>
+    <form class="form" id="sendForm" autocomplete="off">
+      <label class="field"><span id="targetLabel">받는 사람</span><select id="target"></select></label>
+      <div class="row2">
+        <label class="field"><span>금액 (돈)</span><input id="amt" type="number" inputmode="numeric" min="1" step="1" placeholder="0"></label>
+        <label class="field"><span>메모</span><input id="memo" type="text" maxlength="40" placeholder="예: 아이스크림 값"></label>
+      </div>
+      <div class="quick" id="quick"><button type="button">10</button><button type="button">50</button><button type="button">100</button><button type="button">500</button></div>
+      <button class="go" id="goBtn" type="submit">보내기</button>
+      <div class="msg" id="sendMsg" role="status"></div>
+    </form>
+  </section>
+
+  <!-- 집안일 -->
+  <section class="panel" id="p-chores" hidden>
+    <div>
+      <input type="file" id="photoIn" accept="image/*" capture="environment" hidden>
+      <div class="proof" id="proof" hidden>
+        <img id="proofImg" alt="찍은 인증 사진">
+        <div><p id="proofTxt"></p><div class="actions" style="justify-content:flex-start">
+          <button type="button" class="go" style="padding:8px 14px;font-size:14px" id="proofSend">보내기</button>
+          <button type="button" class="ghost" id="proofRetake">다시 찍기</button>
+          <button type="button" class="ghost" id="proofCancel">취소</button></div>
+          <div class="msg" id="proofMsg" role="status"></div></div>
+      </div>
+    </div>
+    <div>
+      <h2>승인 기다리는 일</h2>
+      <ul class="ledger" id="pendList"></ul>
+    </div>
+    <div>
+      <h2>집안일 보상표</h2>
+      <ul class="ledger" id="choreList"></ul>
+    </div>
+    <form class="form parent-only" id="choreForm" autocomplete="off">
+      <h2 style="margin:0">보상표에 추가 (부모)</h2>
+      <div class="row2">
+        <label class="field"><span>할 일</span><input id="choreTitle" maxlength="30" placeholder="예: 빨래 개기"></label>
+        <label class="field"><span>보상 (돈)</span><input id="choreReward" type="number" min="1" step="1" placeholder="30"></label>
+      </div>
+      <button class="ghost" type="submit">추가</button>
+    </form>
+  </section>
+
+  <!-- 상점 -->
+  <section class="panel" id="p-shop" hidden>
+    <div>
+      <h2>내 시간 쿠폰</h2>
+      <ul class="ledger" id="ticketList"></ul>
+    </div>
+    <div>
+      <h2>시간 상점</h2>
+      <div class="modes" id="shopFilter" role="group" aria-label="상품 종류" style="margin-bottom:10px">
+        <button id="sf-all" data-c="all" aria-pressed="true">전체</button>
+        <button id="sf-game" data-c="game" aria-pressed="false">게임 시간</button>
+        <button id="sf-book" data-c="book" aria-pressed="false">책 읽는 시간</button>
+        <button id="sf-etc" data-c="etc" aria-pressed="false">기타</button>
+      </div>
+      <ul class="ledger" id="shopList"></ul>
+      <div class="msg" id="shopMsg" role="status"></div>
+    </div>
+    <div class="parent-only">
+      <h2>가족이 산 쿠폰 (부모)</h2>
+      <ul class="ledger" id="allTickets"></ul>
+    </div>
+    <form class="form parent-only" id="shopForm" autocomplete="off">
+      <h2 style="margin:0">상품 추가 (부모)</h2>
+      <label class="field"><span>상품 이름</span><input id="shopTitle" maxlength="30" placeholder="예: 닌텐도 30분"></label>
+      <div class="row2">
+        <label class="field"><span>종류</span><select id="shopCat"><option value="game">게임 시간</option><option value="book">책 읽는 시간</option><option value="etc">기타</option></select></label>
+        <label class="field"><span>시간 (분)</span><input id="shopMin" type="number" min="1" step="1" placeholder="30"></label>
+      </div>
+      <label class="field"><span>가격 (돈)</span><input id="shopPrice" type="number" min="1" step="1" placeholder="100"></label>
+      <button class="ghost" type="submit">상품 추가</button>
+    </form>
+  </section>
+
+  <!-- 가족 -->
+  <section class="panel" id="p-family" hidden>
+    <div>
+      <h2>가족 지갑</h2>
+      <ul class="ledger" id="memList"></ul>
+    </div>
+    <form class="form" id="pinChange" autocomplete="off">
+      <h2 style="margin:0">PIN 바꾸기</h2>
+      <div class="row2">
+        <label class="field"><span>누구</span><select id="pcWho"></select></label>
+        <label class="field"><span>새 PIN 4자리</span><input id="pcPin" type="password" inputmode="numeric" maxlength="4" placeholder="••••"></label>
+      </div>
+      <button class="ghost" type="submit">PIN 바꾸기</button>
+      <div class="msg" id="pcMsg" role="status"></div>
+    </form>
+    <form class="form parent-only" id="memForm" autocomplete="off">
+      <h2 style="margin:0">가족 추가 (부모)</h2>
+      <div class="row2">
+        <label class="field"><span>이름</span><input id="memName" maxlength="12" placeholder="예: 지훈"></label>
+        <label class="field"><span>역할</span><select id="memRole"><option value="child">아이</option><option value="parent">부모</option></select></label>
+      </div>
+      <label class="field"><span>PIN 4자리 (본인에게 알려주세요)</span><input id="memPin" type="password" inputmode="numeric" maxlength="4" placeholder="••••"></label>
+      <button class="ghost" type="submit">가족 추가</button>
+      <div class="msg" id="memMsg" role="status"></div>
+    </form>
+  </section>
+
+  <!-- 기록 -->
+  <section class="panel" id="p-log" hidden>
+    <div class="modes" id="logFilter" role="group" aria-label="기록 보기">
+      <button id="lf-me" data-f="me" aria-pressed="true">내 기록</button>
+      <button id="lf-all" data-f="all" aria-pressed="false">전체</button>
+    </div>
+    <ul class="ledger" id="logList"></ul>
+  </section>
+
+  <p class="foot">돈은 부모가 ‘용돈 발행’으로만 새로 생깁니다. 아이끼리는 서로 보낼 수 있고, 상점에서 게임·독서 시간 쿠폰을 사면 그만큼 돈이 사라지고, 쿠폰을 시작하면 타이머가 돌아갑니다. 가족 모두에게 이 페이지를 공유하면 같은 장부를 함께 봅니다.</p>
+  </div>
+</div>
+<figure class="viewer" id="viewer" hidden style="margin:0"><div><img id="viewerImg" alt=""><figcaption id="viewerCap"></figcaption></div><button type="button" id="viewerClose">닫기</button></figure>
+
+
+<script>
+const API="https://kpunjvcnyuzadgtnmmvc.supabase.co/rest/v1/rpc/";
+const KEY="sb_publishable_XN1scJQupIr4oE6pZhQKUA_45IJglIF";
+async function rpc(fn,body){
+  const r=await fetch(API+fn,{method:"POST",headers:{"apikey":KEY,"Content-Type":"application/json"},body:JSON.stringify(body||{})});
+  if(!r.ok)throw new Error("net");return r.json()}
+
+const HUES=["#b5303a","#2d6a8a","#3f7d4f","#8a5a2b","#6b4a8a","#a0446e"];
+const S={members:[],tx:[],chores:[],reqs:[],shop:[],tickets:[],shopC:"all",me:"",tok:"",ok:false,mode:"send",logF:"me",ready:false};
+const CAT={game:"게임",book:"독서",etc:"기타"};
+const P={cache:{},loading:{},chore:"",data:""};
+const $=id=>document.getElementById(id);
+const fmt=n=>Number(n).toLocaleString("ko-KR");
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const mmss=ms=>{const s=Math.max(0,Math.ceil(ms/1000));return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`};
+const when=ms=>{const d=new Date(ms);return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`};
+const tState=t=>t.status==="used"?"done":t.status==="running"?(Date.now()>=t.endsAt?"done":"run"):"ready";
+function say(el,text,ok){el.textContent=text;el.className="msg "+(ok?"ok":"err")}
+const newId=()=>[...crypto.getRandomValues(new Uint8Array(10))].map(x=>x.toString(16).padStart(2,"0")).join("");
+async function sha(t){const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t));return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,"0")).join("")}
+const pinHash=(id,pin)=>sha("don:"+id+":"+pin);
+const validPin=p=>/^\d{4}$/.test(p);
+try{S.me=localStorage.getItem("don-me")||"";S.tok=localStorage.getItem("don-tok")||""}catch(e){}
+function saveSession(id,tok){S.me=id;S.tok=tok;S.ok=true;try{localStorage.setItem("don-me",id);localStorage.setItem("don-tok",tok)}catch(_){}}
+const L={pick:"",buf:"",first:""};
+function logout(){S.me="";S.tok="";S.ok=false;L.pick="";L.buf="";L.first="";try{localStorage.removeItem("don-me");localStorage.removeItem("don-tok")}catch(_){};loadPeople()}
+
+const mem=id=>S.members.find(m=>m.id===id);
+const nameOf=id=>id==="bank"?"돈은행":(mem(id)?.name||"(삭제된 가족)");
+const isParent=()=>mem(S.me)?.role==="parent";
+function balances(){const b={};S.members.forEach(m=>b[m.id]=m.balance||0);return b}
+const ERR={balance:"잔액이 모자라요.",parent_only:"부모만 할 수 있어요.",auth:"다시 로그인해 주세요.",locked:"PIN을 여러 번 틀려서 10분간 잠겼어요.",dup:"같은 이름이 이미 있어요.",photo:"사진이 필요해요.",not_found:"이미 처리됐어요.",invalid:"입력을 확인해 주세요.",target:"받는 사람을 확인해 주세요.",amount:"금액을 확인해 주세요."};
+
+// ---------- 서버 ----------
+async function loadPeople(){
+  try{const p=await rpc("don_people");S.members=p;S.ready=true;$("sync").textContent=""}catch(_){$("sync").textContent="인터넷 연결을 확인해 주세요"}
+  render()}
+async function refresh(){
+  if(!S.me||!S.tok)return loadPeople();
+  try{const s=await rpc("don_state",{p_me:S.me,p_tok:S.tok});
+    if(s.error){if(s.error==="locked"){S.ok=false;await loadPeople();say($("pinMsg"),ERR.locked);return}logout();return}
+    S.members=s.members;S.chores=s.chores;S.shop=s.shop;
+    S.tx=s.tx.map(t=>({...t,from:t.from_id,to:t.to_id,photoId:t.photo_id}));
+    S.reqs=s.reqs.map(r=>({...r,photoId:r.photo_id}));
+    S.tickets=s.tickets.map(k=>({...k,endsAt:k.ends_at,startedAt:k.started_at}));
+    S.ok=true;S.ready=true;$("sync").textContent="방금 동기화";render()
+  }catch(_){$("sync").textContent="연결이 끊겼어요. 잠시 후 다시 시도해요"}}
+async function act(action,args){
+  const r=await rpc("don_act",{p_me:S.me,p_tok:S.tok,p_action:action,a:args||{}});
+  if(r.error==="auth"){logout();throw new Error("auth")}
+  await refresh();return r}
+function photo(id){if(!id)return null;if(P.cache[id])return P.cache[id];
+  if(!P.loading[id]&&S.ok){P.loading[id]=1;rpc("don_photo",{p_me:S.me,p_tok:S.tok,p_id:id}).then(r=>{P.cache[id]=r.data&&r.data.length>30?r.data:"none";render()}).catch(()=>{P.loading[id]=0})}
+  return null}
+const thumb=(id,cap)=>{const u=photo(id);return u&&u!=="none"?`<button type="button" class="thumb-btn" data-view="${id}" data-cap="${esc(cap)}"><img class="thumb" src="${u}" alt="${esc(cap)} 인증 사진"></button>`:u==="none"?"":'<span class="thumb" aria-label="사진 불러오는 중"></span>'};
+async function shrink(file){
+  const url=URL.createObjectURL(file);try{const img=await new Promise((ok,no)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=no;i.src=url});
+  for(const [max,q] of [[900,.65],[700,.55],[520,.45]]){const k=Math.min(1,max/Math.max(img.width,img.height));
+    const c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+    const d=c.toDataURL("image/jpeg",q);if(d.length<300000)return d}
+  throw new Error("big")}finally{URL.revokeObjectURL(url)}}
+
+// ---------- 화면 ----------
+function render(){
+  const b=balances();
+  const ok=S.ok&&!!mem(S.me);
+  $("login").hidden=ok;$("app").hidden=!ok;$("whoBox").hidden=!ok;
+  if(!ok){renderLogin();return}
+  const me=mem(S.me);
+  $("whoName").innerHTML=`<b>${esc(me.name)}</b> 님`;
+  const pc=$("pcWho"),pcKeep=pc.value,pcOpts=isParent()?S.members:[me];
+  pc.innerHTML=pcOpts.map(m=>`<option value="${m.id}">${esc(m.name)}${m.id===me.id?" (나)":""}</option>`).join("");
+  pc.value=pcOpts.some(m=>m.id===pcKeep)?pcKeep:me.id;
+  $("owner").innerHTML=`<b>${esc(me.name)}</b> 님의 지갑`;
+  $("bal").textContent=fmt(b[me.id]||0);
+  $("serial").textContent="No. "+me.id.slice(-6).toUpperCase();
+  $("circ").textContent=`시중 유통량 ${fmt(Object.values(b).reduce((a,c)=>a+c,0))} 돈`;
+  document.querySelectorAll(".parent-only").forEach(el=>el.hidden=!isParent());
+  if(!isParent()&&S.mode!=="send")setMode("send",true);
+
+  const tgt=$("target"),keep=tgt.value;
+  const opts=S.mode==="send"?S.members.filter(m=>m.id!==S.me):S.members;
+  tgt.innerHTML=opts.length?opts.map(m=>`<option value="${m.id}">${esc(m.name)} · ${fmt(b[m.id]||0)} 돈</option>`).join(""):'<option value="">가족을 먼저 추가하세요</option>';
+  if(opts.some(o=>o.id===keep))tgt.value=keep;
+  $("targetLabel").textContent=S.mode==="send"?"받는 사람":S.mode==="mint"?"용돈 받을 사람":"차감할 사람";
+  $("goBtn").textContent=S.mode==="send"?"보내기":S.mode==="mint"?"발행하기":"차감하기";
+  $("goBtn").disabled=!opts.length;
+
+  const pend=S.reqs;
+  $("pendBadge").hidden=!pend.length;$("pendBadge").textContent=pend.length;
+  $("pendList").innerHTML=pend.length?pend.map(r=>`<li style="grid-template-columns:${r.photoId?"auto ":""}1fr auto">${r.photoId?`<span style="grid-row:1/span 2">${thumb(r.photoId,nameOf(r.who)+" · "+r.title)}</span>`:""}<span class="t">${esc(nameOf(r.who))} · ${esc(r.title)}</span>
+    <span class="s" style="grid-column:${r.photoId?2:1}">${when(r.at)} · 보상 ${fmt(r.reward)} 돈${r.photoId?"":" · 사진 없음"}</span>
+    <span class="v" style="grid-column:${r.photoId?3:2}">${isParent()?`<span class="actions"><button class="ghost" data-ok="${r.id}">지급</button><button class="ghost" data-no="${r.id}">반려</button></span>`:'<span class="pill wait">대기</span>'}</span></li>`).join(""):'<li class="empty" style="display:block">기다리는 일이 없어요</li>';
+  const ch=[...S.chores].sort((a,b)=>(a.reward||0)-(b.reward||0));
+  $("choreList").innerHTML=ch.length?ch.map(c=>`<li><span class="t">${esc(c.title)}</span><span class="s">${fmt(c.reward)} 돈</span>
+    <span class="v"><span class="actions"><button class="ghost" data-done="${c.id}" ${!P.chore?"":"disabled"}>${isParent()?"했어요":"사진 찍고 했어요"}</button>${isParent()?`<button class="ghost" data-delc="${c.id}" aria-label="${esc(c.title)} 삭제">삭제</button>`:""}</span></span></li>`).join(""):'<li class="empty" style="display:block">보상표가 비어 있어요. 부모가 할 일을 추가하세요.</li>';
+
+  const myBal=b[me.id]||0;
+  const items=[...S.shop].filter(i=>S.shopC==="all"||i.cat===S.shopC).sort((a,b)=>(a.price||0)-(b.price||0));
+  $("shopList").innerHTML=items.length?items.map(i=>{const lack=(i.price||0)-myBal;
+    return `<li><span class="t"><span class="cat ${i.cat||"etc"}">${CAT[i.cat]||"기타"}</span>${esc(i.title)}</span>
+    <span class="s">${fmt(i.minutes)}분 · <span class="price">${fmt(i.price)} 돈</span></span>
+    <span class="v"><span class="actions"><button class="ghost" data-buy="${i.id}" ${lack<=0?"":"disabled"}>사기</button>${isParent()?`<button class="ghost" data-delshop="${i.id}" aria-label="${esc(i.title)} 삭제">삭제</button>`:""}</span>
+    ${lack>0?`<span class="short">${fmt(lack)} 돈 부족</span>`:""}</span></li>`}).join(""):'<li class="empty" style="display:block">이 종류의 상품이 없어요</li>';
+  const tRow=(t,showWho)=>{const st=tState(t);
+    const right=st==="run"?`<span class="clock" data-end="${t.endsAt}">${mmss(t.endsAt-Date.now())}</span>`
+      :st==="ready"?(t.who===S.me?`<button class="ghost" data-start="${t.id}">시작하기</button>`:'<span class="pill ready">미사용</span>')
+      :'<span class="pill done">사용 완료</span>';
+    return `<li><span class="t"><span class="cat ${t.cat||"etc"}">${CAT[t.cat]||"기타"}</span>${showWho?esc(nameOf(t.who))+" · ":""}${esc(t.title)}</span>
+    <span class="s">${fmt(t.minutes)}분 · ${when(t.at)} 구매${st==="run"&&isParent()?` · <button class="ghost" style="padding:2px 8px" data-stop="${t.id}">종료</button>`:""}</span><span class="v">${right}</span></li>`};
+  const order={run:0,ready:1,done:2};
+  const mine=S.tickets.filter(t=>t.who===me.id&&(tState(t)!=="done"||Date.now()-(t.endsAt||t.at)<864e5)).sort((a,b)=>(order[tState(a)]-order[tState(b)])||b.at-a.at);
+  $("ticketList").innerHTML=mine.length?mine.map(t=>tRow(t,false)).join(""):'<li class="empty" style="display:block">아직 산 쿠폰이 없어요. 아래 상점에서 골라보세요.</li>';
+  const others=S.tickets.filter(t=>tState(t)!=="done");
+  $("allTickets").innerHTML=others.length?others.map(t=>tRow(t,true)).join(""):'<li class="empty" style="display:block">사용 전이거나 사용 중인 쿠폰이 없어요</li>';
+  $("runBadge").hidden=!S.tickets.some(t=>tState(t)==="run");
+
+  $("memList").innerHTML=S.members.map(m=>`<li><span class="t mem" style="grid-template-columns:auto 1fr"><span class="dot" style="background:${HUES[(m.hue||0)%HUES.length]}">${esc(m.name.slice(0,1))}</span><span>${esc(m.name)}<span class="role">${m.role==="parent"?"부모":"아이"}${m.has_pin?"":" · PIN 없음"}</span></span></span>
+    <span class="v num">${fmt(b[m.id]||0)} 돈</span></li>`).join("");
+
+  const rows=S.tx.filter(t=>S.logF==="all"||t.from===me.id||t.to===me.id).slice(0,200);
+  const kindLabel={mint:"발행",burn:"차감",send:"송금",chore:"집안일",buy:"구매",free:"무제한",welcome:"시작 선물"};
+  $("logList").innerHTML=rows.length?rows.map(t=>{
+    let sign="",cls="";if(S.logF==="me"){if(t.to===me.id){sign="+";cls="plus"}else{sign="−";cls="minus"}}
+    return `<li><span class="t"><span class="kind">${kindLabel[t.kind]||"거래"}</span>${esc(nameOf(t.from))} → ${esc(nameOf(t.to))}</span>
+    <span class="s">${when(t.at)}${t.memo?" · "+esc(t.memo):""}${t.photoId?` · <button type="button" class="photo-tag" data-view="${t.photoId}" data-cap="${esc(nameOf(t.to)+" · "+(t.memo||""))}">사진 보기</button>`:""}</span><span class="v ${cls}">${sign}${fmt(t.amount)}</span></li>`}).join(""):'<li class="empty" style="display:block">아직 거래가 없어요</li>';
+}
+
+function setMode(m,silent){S.mode=m;document.querySelectorAll("#modes button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.m===m));if(!silent)render()}
+document.querySelectorAll("#modes button").forEach(b=>b.onclick=()=>setMode(b.dataset.m));
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  ["send","chores","shop","family","log"].forEach(p=>$("p-"+p).hidden=p!==b.dataset.p)});
+document.querySelectorAll("#logFilter button").forEach(b=>b.onclick=()=>{S.logF=b.dataset.f;document.querySelectorAll("#logFilter button").forEach(x=>x.setAttribute("aria-pressed",x===b));render()});
+document.querySelectorAll("#shopFilter button").forEach(b=>b.onclick=()=>{S.shopC=b.dataset.c;document.querySelectorAll("#shopFilter button").forEach(x=>x.setAttribute("aria-pressed",x===b));render()});
+document.querySelectorAll("#quick button").forEach(b=>b.onclick=()=>{$("amt").value=b.textContent});
+
+// ---------- 로그인 ----------
+function renderLogin(){
+  const dot=m=>`<span class="dot" style="background:${HUES[(m.hue||0)%HUES.length]}">${esc(m.name.slice(0,1))}</span>`;
+  const first=S.ready&&!S.members.length;
+  $("firstForm").hidden=!first;
+  $("loginTitle").textContent=first?"처음 오셨네요":"누가 쓰나요?";
+  $("loginSub").textContent=!S.ready?"불러오는 중…":first?"부모 한 명을 먼저 등록하세요. 나머지 가족은 로그인한 뒤 ‘가족’ 탭에서 추가합니다.":"내 이름을 누르고 PIN 4자리를 입력하세요.";
+  if(L.pick&&!mem(L.pick))L.pick="";
+  $("people").innerHTML=S.members.map(m=>`<button type="button" class="person" data-pick="${m.id}" aria-pressed="${m.id===L.pick}">${dot(m)}${esc(m.name)}</button>`).join("");
+  const m=mem(L.pick);$("pinpad").hidden=!m;
+  if(m){const setting=!m.has_pin;
+    $("pinWho").innerHTML=`<b>${esc(m.name)}</b><br>${!setting?"PIN을 입력하세요":L.first?"한 번 더 입력하세요":"아직 PIN이 없어요. 새 PIN 4자리를 정하세요"}`;
+    [...$("dots").children].forEach((d,i)=>d.classList.toggle("on",i<L.buf.length))}
+}
+let busy=false;
+async function pinKey(k){
+  const m=mem(L.pick);if(!m||busy)return;const msg=$("pinMsg");
+  if(k==="x"){L.pick="";L.buf="";L.first="";msg.textContent="";return renderLogin()}
+  if(k==="b"){L.buf=L.buf.slice(0,-1);return renderLogin()}
+  if(L.buf.length>=4)return;L.buf+=k;renderLogin();
+  if(L.buf.length<4)return;
+  const pin=L.buf,h=await pinHash(m.id,pin);
+  const fail=t=>{say(msg,t);L.buf="";$("dots").classList.remove("shake");void $("dots").offsetWidth;$("dots").classList.add("shake");setTimeout(renderLogin,300)};
+  busy=true;
+  try{
+    if(m.has_pin){const r=await rpc("don_login",{p_me:m.id,p_tok:h});
+      if(r.ok){msg.textContent="";L.buf="";L.pick="";saveSession(m.id,h);await refresh()}else fail(r.error==="locked"?ERR.locked:"PIN이 맞지 않아요")}
+    else if(!L.first){L.first=pin;L.buf="";msg.textContent="";renderLogin()}
+    else if(L.first!==pin){L.first="";fail("두 번 입력한 PIN이 달라요. 처음부터 다시 정하세요")}
+    else{const r=await rpc("don_claim_pin",{p_me:m.id,p_tok:h});L.first="";
+      if(r.ok){L.buf="";L.pick="";saveSession(m.id,h);await refresh()}else{fail("이미 PIN이 정해져 있어요");loadPeople()}}
+  }catch(_){fail("연결이 안 돼요. 다시 해주세요")}
+  busy=false}
+$("people").onclick=e=>{const b=e.target.closest("[data-pick]");if(!b)return;L.pick=b.dataset.pick;L.buf="";L.first="";$("pinMsg").textContent="";renderLogin()};
+$("keys").onclick=e=>{const b=e.target.closest("button");if(b)pinKey(b.dataset.k||b.textContent)};
+document.addEventListener("keydown",e=>{if(e.key==="Escape")$("viewer").hidden=true;
+  if($("login").hidden||!L.pick||e.target.tagName==="INPUT")return;
+  if(/^\d$/.test(e.key))pinKey(e.key);else if(e.key==="Backspace")pinKey("b");else if(e.key==="Escape")pinKey("x")});
+$("logoutBtn").onclick=logout;
+$("firstForm").onsubmit=async e=>{e.preventDefault();const msg=$("firstMsg"),name=$("firstName").value.trim(),pin=$("firstPin").value.trim();
+  if(!name)return say(msg,"이름을 입력하세요.");if(!validPin(pin))return say(msg,"PIN은 숫자 4자리예요.");
+  try{const id=newId(),h=await pinHash(id,pin);const r=await rpc("don_first",{p_id:id,p_name:name,p_tok:h});
+    if(!r.ok)return say(msg,"이미 가족이 등록돼 있어요. 새로고침하세요.");
+    saveSession(id,h);$("firstName").value="";$("firstPin").value="";await refresh()}
+  catch(_){say(msg,"등록하지 못했어요. 인터넷 연결을 확인하세요.")}};
+
+// ---------- 동작 ----------
+$("pinChange").onsubmit=async e=>{e.preventDefault();const msg=$("pcMsg"),id=$("pcWho").value,pin=$("pcPin").value.trim();
+  if(!validPin(pin))return say(msg,"PIN은 숫자 4자리예요.");
+  try{const h=await pinHash(id,pin);const r=await rpc("don_act",{p_me:S.me,p_tok:S.tok,p_action:"set_pin",a:{who:id,tok:h}});
+    if(r.error)return say(msg,ERR[r.error]||"바꾸지 못했어요.");
+    if(id===S.me)saveSession(id,h);$("pcPin").value="";say(msg,`${nameOf(id)}의 PIN을 바꿨어요.`,true);refresh()}catch(_){say(msg,"바꾸지 못했어요.")}};
+
+$("sendForm").onsubmit=async e=>{
+  e.preventDefault();const msg=$("sendMsg");
+  const amt=Math.floor(+$("amt").value),to=$("target").value,memo=$("memo").value.trim();
+  if(!(amt>0))return say(msg,"1 돈 이상 입력하세요.");if(!to)return say(msg,"대상을 고르세요.");
+  $("goBtn").disabled=true;const mode=S.mode;
+  try{const r=await act(mode,{to,amount:amt,memo});
+    if(r.error)say(msg,r.error==="balance"?`잔액이 모자라요. 지금 ${fmt(r.balance)} 돈 있어요.`:(ERR[r.error]||"처리하지 못했어요."));
+    else{say(msg,mode==="send"?`${nameOf(to)}에게 ${fmt(amt)} 돈을 보냈어요.`:mode==="mint"?`${nameOf(to)}에게 ${fmt(amt)} 돈을 발행했어요.`:`${nameOf(to)}에게서 ${fmt(amt)} 돈을 차감했어요.`,true);$("amt").value="";$("memo").value=""}}
+  catch(_){say(msg,"저장하지 못했어요. 잠시 후 다시 시도하세요.")}
+  render()};
+
+$("memForm").onsubmit=async e=>{
+  e.preventDefault();const msg=$("memMsg"),name=$("memName").value.trim(),pin=$("memPin").value.trim();
+  if(!name)return say(msg,"이름을 입력하세요.");if(!validPin(pin))return say(msg,"PIN은 숫자 4자리예요.");
+  try{const id=newId();const r=await act("add_member",{id,name,role:$("memRole").value,tok:await pinHash(id,pin)});
+    if(r.error)return say(msg,ERR[r.error]||"추가하지 못했어요.");
+    say(msg,`${name} 님을 추가했어요. 시작 선물 100돈을 받았어요. PIN을 알려주세요.`,true);$("memName").value="";$("memPin").value=""}
+  catch(_){say(msg,"추가하지 못했어요.")}};
+
+$("choreForm").onsubmit=async e=>{e.preventDefault();const title=$("choreTitle").value.trim(),amount=Math.floor(+$("choreReward").value);
+  if(!title||!(amount>0))return;try{await act("add_chore",{title,amount});$("choreTitle").value="";$("choreReward").value=""}catch(_){}};
+$("shopForm").onsubmit=async e=>{e.preventDefault();const title=$("shopTitle").value.trim(),minutes=Math.floor(+$("shopMin").value),amount=Math.floor(+$("shopPrice").value);
+  if(!title||!(minutes>0)||!(amount>0))return;
+  try{await act("add_shop",{title,minutes,amount,cat:$("shopCat").value});["shopTitle","shopMin","shopPrice"].forEach(id=>$(id).value="")}catch(_){}};
+
+function closeProof(){P.chore="";P.data="";$("proof").hidden=true;$("proofMsg").textContent="";render()}
+$("photoIn").onchange=async e=>{const f=e.target.files?.[0];const c=S.chores.find(x=>x.id===P.chore);if(!f||!c){if(!P.data)closeProof();return}
+  $("proof").hidden=false;$("proofTxt").textContent="사진 줄이는 중…";$("proofSend").disabled=true;
+  try{P.data=await shrink(f);$("proofImg").src=P.data;$("proofTxt").textContent=`${c.title} · ${fmt(c.reward)} 돈. 이 사진으로 보낼까요?`;$("proofSend").disabled=false}
+  catch(_){P.data="";$("proofTxt").textContent="사진을 읽지 못했어요. 다시 찍어주세요."}
+  render()};
+$("proofRetake").onclick=()=>{$("photoIn").value="";$("photoIn").click()};
+$("proofCancel").onclick=closeProof;
+$("proofSend").onclick=async()=>{if(!P.chore||!P.data)return;$("proofSend").disabled=true;
+  try{const r=await act("chore_done",{chore_id:P.chore,photo:P.data});if(r.error){$("proofSend").disabled=false;return say($("proofMsg"),ERR[r.error]||"보내지 못했어요.")}closeProof()}
+  catch(_){$("proofSend").disabled=false;say($("proofMsg"),"보내지 못했어요. 다시 눌러주세요.")}};
+$("viewerClose").onclick=()=>{$("viewer").hidden=true};
+$("viewer").onclick=e=>{if(e.target.id==="viewer")$("viewer").hidden=true};
+
+document.addEventListener("click",async e=>{
+  const t=e.target.closest("button");if(!t||!S.ok)return;const d=t.dataset;
+  if(d.view){const u=photo(d.view);if(u&&u!=="none"){$("viewerImg").src=u;$("viewerImg").alt=d.cap||"인증 사진";$("viewerCap").textContent=d.cap||"";$("viewer").hidden=false;$("viewerClose").focus()}return}
+  if(d.done&&!isParent()){P.chore=d.done;$("photoIn").value="";$("photoIn").click();return}
+  const map=d.done?["chore_done",{chore_id:d.done}]:d.ok?["approve",{req_id:d.ok}]:d.no?["reject",{req_id:d.no}]
+    :d.buy?["buy",{item_id:d.buy}]:d.start?["start",{ticket_id:d.start}]:d.stop?["stop",{ticket_id:d.stop}]
+    :d.delshop?["del_shop",{id:d.delshop}]:d.delc?["del_chore",{id:d.delc}]:null;
+  if(!map)return;t.disabled=true;
+  try{const r=await act(map[0],map[1]);
+    if(map[0]==="buy")say($("shopMsg"),r.error?(r.error==="balance"?"돈이 모자라요.":ERR[r.error]||"사지 못했어요."):"쿠폰을 샀어요. 위 ‘내 시간 쿠폰’에서 시작하세요.",!r.error)}
+  catch(_){t.disabled=false}});
+
+// 타이머 표시
+setInterval(()=>{let ended=false;document.querySelectorAll(".clock[data-end]").forEach(c=>{const left=+c.dataset.end-Date.now();c.textContent=mmss(left);if(left<=0)ended=true});if(ended)render()},1000);
+// 5초마다 새로고침 (화면이 보일 때만)
+setInterval(()=>{if(S.ok&&!document.hidden&&!P.chore)refresh()},5000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&S.ok)refresh()});
+
+render();
+if(S.me&&S.tok)refresh();else loadPeople();
+</script>
+</body>
+</html>
